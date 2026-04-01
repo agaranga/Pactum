@@ -1,0 +1,218 @@
+@page "/workbench"
+@using Pactum.Showcase.Models
+@using Pactum.Showcase.Services
+@inject GoogleSheetsService SheetsService
+@inject DescriptionService DescriptionService
+@rendermode InteractiveServer
+
+<PageTitle>Pactum — Рабочий стол</PageTitle>
+
+<div class="d-flex flex-column vh-100">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
+        <h5 class="mb-0">Рабочий стол</h5>
+        <button class="btn btn-sm btn-outline-primary" @onclick="LoadBusinesses" disabled="@_loading">
+            @if (_loading)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Обновить
+        </button>
+    </div>
+
+    @if (_error != null)
+    {
+        <div class="alert alert-danger alert-dismissible m-2 mb-0">
+            @_error
+            <button type="button" class="btn-close" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    <!-- Main content -->
+    <div class="flex-grow-1 d-flex overflow-hidden">
+        <!-- Left: table -->
+        <div class="border-end overflow-auto" style="width: 45%; min-width: 300px;">
+            @if (_businesses == null)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <p class="mt-2 text-muted">Загрузка...</p>
+                </div>
+            }
+            else
+            {
+                <table class="table table-hover table-sm mb-0 workbench-table">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width:40px">#</th>
+                            <th>Название</th>
+                            <th>Вид деятельности</th>
+                            <th>Адрес</th>
+                            <th style="width:90px">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var biz in _businesses)
+                        {
+                            var isSelected = _selected == biz;
+                            <tr class="@(isSelected ? "table-primary" : "")" style="cursor:pointer"
+                                @onclick="() => SelectBusiness(biz)">
+                                <td class="text-muted">@biz.Row</td>
+                                <td class="fw-semibold text-truncate" style="max-width:200px">@biz.Name</td>
+                                <td class="text-truncate" style="max-width:160px">@biz.Properties.GetValueOrDefault("Вид деятельности", "")</td>
+                                <td class="text-truncate" style="max-width:160px">@biz.Properties.GetValueOrDefault("Адрес", "")</td>
+                                <td>
+                                    @if (biz.GeneratedDescription != null)
+                                    {
+                                        <span class="badge bg-success">Готово</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <!-- Right: detail panel -->
+        <div class="flex-grow-1 overflow-auto p-3">
+            @if (_selected == null)
+            {
+                <div class="text-center text-muted py-5">
+                    <h4>Выберите бизнес из списка</h4>
+                    <p>Нажмите на строку в таблице, чтобы увидеть подробности</p>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h4 class="mb-0">@_selected.Name</h4>
+                    <span class="badge bg-secondary">Строка @_selected.Row</span>
+                </div>
+
+                <!-- Properties -->
+                <div class="card mb-3">
+                    <div class="card-header py-2">
+                        <strong>Параметры из таблицы</strong>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-striped mb-0">
+                            @foreach (var prop in _selected.Properties)
+                            {
+                                <tr>
+                                    <th class="text-muted ps-3" style="width:40%">@prop.Key</th>
+                                    <td>@prop.Value</td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Generate button -->
+                <div class="mb-3">
+                    <button class="btn btn-primary" @onclick="() => GenerateDescription(_selected)"
+                            disabled="@_selected.IsGenerating">
+                        @if (_selected.IsGenerating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Генерация...</span>
+                        }
+                        else if (_selected.GeneratedDescription != null)
+                        {
+                            <span>Перегенерировать описание</span>
+                        }
+                        else
+                        {
+                            <span>Сгенерировать описание</span>
+                        }
+                    </button>
+                </div>
+
+                <!-- Generated description -->
+                @if (_selected.GeneratedDescription != null)
+                {
+                    <div class="card border-success">
+                        <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center py-2">
+                            <strong>Сгенерированное описание</strong>
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => CopyToClipboard(_selected.GeneratedDescription)">
+                                Копировать
+                            </button>
+                        </div>
+                        <div class="card-body generated-description">
+                            @((MarkupString)Markdig.Markdown.ToHtml(_selected.GeneratedDescription))
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Business>? _businesses;
+    private Business? _selected;
+    private string? _error;
+    private bool _loading;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+            await LoadBusinesses();
+            StateHasChanged();
+        }
+    }
+
+    private void SelectBusiness(Business biz)
+    {
+        _selected = biz;
+    }
+
+    private async Task LoadBusinesses()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _businesses = await SheetsService.GetBusinessesAsync();
+            _selected = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка загрузки: {ex.Message}";
+            _businesses = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task GenerateDescription(Business biz)
+    {
+        biz.IsGenerating = true;
+        try
+        {
+            biz.GeneratedDescription = await DescriptionService.GenerateDescriptionAsync(biz);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка генерации для {biz.Name}: {ex.Message}";
+        }
+        finally
+        {
+            biz.IsGenerating = false;
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        // TODO: JS interop
+    }
+}

@@ -416,3 +416,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Local dev settings with secrets
+appsettings.Development.json
+
+# Claude Code local settings
+.claude/
