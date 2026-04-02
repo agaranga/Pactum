@@ -8,11 +8,13 @@ public class IpWhitelistMiddleware
     private readonly HashSet<string> _allowedIps;
     private readonly HashSet<string> _allowedSubnets;
     private readonly ILogger<IpWhitelistMiddleware> _logger;
+    private readonly bool _disabled;
 
     public IpWhitelistMiddleware(RequestDelegate next, IConfiguration config, ILogger<IpWhitelistMiddleware> logger)
     {
         _next = next;
         _logger = logger;
+        _disabled = config.GetValue("IpWhitelist:Disabled", false);
 
         var ips = config.GetSection("IpWhitelist:AllowedIPs").Get<string[]>() ?? [];
         _allowedIps = new HashSet<string>(ips, StringComparer.OrdinalIgnoreCase);
@@ -23,6 +25,12 @@ public class IpWhitelistMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        if (_disabled)
+        {
+            await _next(context);
+            return;
+        }
+
         var remoteIp = context.Connection.RemoteIpAddress;
 
         if (remoteIp == null)
