@@ -34,14 +34,6 @@
                     Перезагрузить данные
                 </button>
 
-                <button class="btn btn-outline-warning" @onclick="ExtractCities" disabled="@_busy">
-                    @if (_busy && _currentOp == "cities")
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                    }
-                    Извлечь города из адресов
-                </button>
-
                 <button class="btn btn-danger" @onclick="ShowClearConfirm" disabled="@_busy">
                     Очистить базу
                 </button>
@@ -137,29 +129,6 @@
         catch (Exception ex)
         {
             _message = $"Ошибка очистки: {ex.Message}";
-            _isError = true;
-        }
-        finally
-        {
-            _busy = false;
-            _currentOp = null;
-        }
-    }
-
-    private async Task ExtractCities()
-    {
-        _busy = true;
-        _currentOp = "cities";
-        _message = null;
-        try
-        {
-            var (updated, skipped) = await SheetsApi.ExtractCitiesAsync();
-            _message = $"Города извлечены: обновлено {updated}, пропущено {skipped}";
-            _isError = false;
-        }
-        catch (Exception ex)
-        {
-            _message = $"Ошибка: {ex.Message}";
             _isError = true;
         }
         finally
