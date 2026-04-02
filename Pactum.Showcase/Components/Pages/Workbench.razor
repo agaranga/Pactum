@@ -1,6 +1,8 @@
 @page "/workbench"
+@using Microsoft.AspNetCore.Authorization
 @using Pactum.Showcase.Models
 @using Pactum.Showcase.Services
+@attribute [Authorize]
 @inject GoogleSheetsService SheetsService
 @inject DescriptionService DescriptionService
 @rendermode InteractiveServer

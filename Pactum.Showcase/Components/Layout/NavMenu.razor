@@ -8,15 +8,25 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Витрина
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="workbench">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Рабочий стол
-            </NavLink>
-        </div>
+        <AuthorizeView>
+            <Authorized Context="authState">
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Витрина
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="workbench">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Рабочий стол
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3 mt-auto">
+                    <div class="nav-link text-muted small">@authState.User.Identity?.Name</div>
+                    <NavLink class="nav-link" href="logout">
+                        Выйти
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 </div>
