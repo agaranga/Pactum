@@ -1,11 +1,6 @@
 @page "/login"
-@using System.Security.Claims
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using Pactum.Showcase.Services
-
-@inject IUserService UserService
-@inject NavigationManager Navigation
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
 
 <PageTitle>Вход — Pactum</PageTitle>
 
@@ -14,21 +9,20 @@
         <div class="card-body p-4">
             <h4 class="card-title text-center mb-4">Pactum</h4>
 
-            @if (!string.IsNullOrEmpty(_error))
+            @if (_showError)
             {
-                <div class="alert alert-danger py-2">@_error</div>
+                <div class="alert alert-danger py-2">Неверный логин или пароль</div>
             }
 
-            <form method="post" @formname="login" @onsubmit="HandleLogin">
-                <AntiforgeryToken />
+            <form method="post" action="/api/auth/login">
                 <div class="mb-3">
                     <label class="form-label">Логин</label>
-                    <input type="text" class="form-control" name="username" @bind="_username"
+                    <input type="text" class="form-control" name="username"
                            autocomplete="username" required autofocus />
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Пароль</label>
-                    <input type="password" class="form-control" name="password" @bind="_password"
+                    <input type="password" class="form-control" name="password"
                            autocomplete="current-password" required />
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Войти</button>
@@ -38,48 +32,13 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    public HttpContext? HttpContext { get; set; }
+    private bool _showError;
 
-    [SupplyParameterFromForm]
-    private string? _username { get; set; }
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
 
-    [SupplyParameterFromForm]
-    private string? _password { get; set; }
-
-    private string? _error;
-
-    private async Task HandleLogin()
+    protected override void OnInitialized()
     {
-        if (HttpContext == null || string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
-            return;
-
-        var user = await UserService.ValidateAsync(_username, _password);
-        if (user == null)
-        {
-            _error = "Неверный логин или пароль";
-            return;
-        }
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id),
-            new(ClaimTypes.Name, user.DisplayName),
-            new(ClaimTypes.Role, user.Role)
-        };
-
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(identity);
-
-        await HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            principal,
-            new AuthenticationProperties
-            {
-                IsPersistent = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30)
-            });
-
-        Navigation.NavigateTo("/", forceLoad: true);
+        _showError = Error == "1";
     }
 }

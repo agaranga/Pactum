@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Pactum.Showcase.Components;
 using Pactum.Showcase.Middleware;
@@ -35,6 +37,41 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.MapPost("/api/auth/login", async (HttpContext ctx, IUserService userService) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+    var username = form["username"].ToString();
+    var password = form["password"].ToString();
+
+    var user = await userService.ValidateAsync(username, password);
+    if (user == null)
+    {
+        ctx.Response.Redirect("/login?error=1");
+        return;
+    }
+
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, user.Id),
+        new(ClaimTypes.Name, user.DisplayName),
+        new(ClaimTypes.Role, user.Role)
+    };
+
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await ctx.SignInAsync(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        new ClaimsPrincipal(identity),
+        new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
+
+    ctx.Response.Redirect("/");
+});
+
+app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
+{
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    ctx.Response.Redirect("/login");
+});
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

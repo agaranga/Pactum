@@ -1,21 +1,13 @@
 @page "/logout"
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
 @inject NavigationManager Navigation
 
 <PageTitle>Выход</PageTitle>
 
 @code {
-    [CascadingParameter]
-    public HttpContext? HttpContext { get; set; }
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        if (HttpContext != null)
-        {
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            Navigation.NavigateTo("/login", forceLoad: true);
-        }
+        Navigation.NavigateTo("/api/auth/logout", forceLoad: true);
     }
 }
