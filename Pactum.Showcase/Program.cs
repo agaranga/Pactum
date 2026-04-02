@@ -65,7 +65,7 @@ app.MapPost("/api/auth/login", async (HttpContext ctx, IUserService userService)
         new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(30) });
 
     ctx.Response.Redirect("/");
-});
+}).DisableAntiforgery();
 
 app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
 {
