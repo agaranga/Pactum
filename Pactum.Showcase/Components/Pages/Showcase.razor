@@ -87,7 +87,7 @@
                                     </button>
                                 </div>
                             }
-                            else
+                            else if (_isAdmin)
                             {
                                 <button class="btn btn-sm btn-primary" @onclick="() => GenerateDescription(biz)" disabled="@biz.IsGenerating">
                                     @if (biz.IsGenerating)
@@ -107,23 +107,30 @@
             }
         </div>
 
-        <div class="mt-4">
-            <button class="btn btn-success" @onclick="GenerateAll" disabled="@_generatingAll">
-                @if (_generatingAll)
-                {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                    <span>Генерация всех (@_generatedCount / @_businesses.Count)...</span>
-                }
-                else
-                {
-                    <span>Сгенерировать все описания</span>
-                }
-            </button>
-        </div>
+        @if (_isAdmin)
+        {
+            <div class="mt-4">
+                <button class="btn btn-success" @onclick="GenerateAll" disabled="@_generatingAll">
+                    @if (_generatingAll)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Генерация всех (@_generatedCount / @_businesses.Count)...</span>
+                    }
+                    else
+                    {
+                        <span>Сгенерировать все описания</span>
+                    }
+                </button>
+            </div>
+        }
     }
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
     private List<Business>? _businesses;
     private string? _error;
     private bool _loading;
@@ -137,6 +144,11 @@
         if (firstRender && !_initialized)
         {
             _initialized = true;
+            if (AuthState != null)
+            {
+                var state = await AuthState;
+                _isAdmin = state.User.IsInRole("Admin");
+            }
             await LoadBusinesses();
             StateHasChanged();
         }
