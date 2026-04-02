@@ -422,3 +422,7 @@ appsettings.Development.json
 
 # Claude Code local settings
 .claude/
+
+# Google Service Account credentials
+google-credentials.json
+**/google-credentials.json

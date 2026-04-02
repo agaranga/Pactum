@@ -22,6 +22,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddHttpClient<GoogleSheetsService>();
+builder.Services.AddSingleton<GoogleSheetsApiService>();
 builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 

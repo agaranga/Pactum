@@ -1,0 +1,176 @@
+@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@using Pactum.Showcase.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject GoogleSheetsApiService SheetsApi
+@inject GoogleSheetsService SheetsService
+@rendermode InteractiveServer
+
+<PageTitle>Pactum — Администрирование</PageTitle>
+
+<div class="container py-3">
+    <h3 class="mb-4">Администрирование</h3>
+
+    @if (_message != null)
+    {
+        <div class="alert @(_isError ? "alert-danger" : "alert-success") alert-dismissible">
+            @_message
+            <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+        </div>
+    }
+
+    <!-- Database section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>База данных (Google Sheets)</strong>
+        </div>
+        <div class="card-body">
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-primary" @onclick="ReloadData" disabled="@_busy">
+                    @if (_busy && _currentOp == "reload")
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Перезагрузить данные
+                </button>
+
+                <button class="btn btn-outline-warning" @onclick="ExtractCities" disabled="@_busy">
+                    @if (_busy && _currentOp == "cities")
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Извлечь города из адресов
+                </button>
+
+                <button class="btn btn-danger" @onclick="ShowClearConfirm" disabled="@_busy">
+                    Очистить базу
+                </button>
+            </div>
+
+            @if (_showClearConfirm)
+            {
+                <div class="alert alert-warning mt-3">
+                    <strong>Внимание!</strong> Это удалит все данные из таблицы (заголовки останутся).
+                    <div class="mt-2">
+                        <button class="btn btn-danger btn-sm me-2" @onclick="ClearDatabase" disabled="@_busy">
+                            @if (_busy && _currentOp == "clear")
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Да, очистить
+                        </button>
+                        <button class="btn btn-secondary btn-sm" @onclick="() => _showClearConfirm = false">Отмена</button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Stats -->
+    @if (_stats != null)
+    {
+        <div class="card">
+            <div class="card-header">
+                <strong>Статистика</strong>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    @foreach (var stat in _stats)
+                    {
+                        <li>@stat</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string? _message;
+    private bool _isError;
+    private bool _busy;
+    private string? _currentOp;
+    private bool _showClearConfirm;
+    private List<string>? _stats;
+
+    private async Task ReloadData()
+    {
+        _busy = true;
+        _currentOp = "reload";
+        _message = null;
+        try
+        {
+            var businesses = await SheetsService.GetBusinessesAsync();
+            _message = $"Загружено {businesses.Count} записей из таблицы";
+            _isError = false;
+            _stats = [
+                $"Всего записей: {businesses.Count}",
+                $"С названием: {businesses.Count(b => !b.Name.StartsWith("Бизнес #"))}",
+                $"С адресом: {businesses.Count(b => b.Properties.ContainsKey("Адрес") && !string.IsNullOrWhiteSpace(b.Properties["Адрес"]))}"
+            ];
+        }
+        catch (Exception ex)
+        {
+            _message = $"Ошибка: {ex.Message}";
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+            _currentOp = null;
+        }
+    }
+
+    private async Task ClearDatabase()
+    {
+        _busy = true;
+        _currentOp = "clear";
+        _message = null;
+        _showClearConfirm = false;
+        try
+        {
+            await SheetsApi.ClearDataAsync();
+            _message = "База очищена. Заголовки сохранены.";
+            _isError = false;
+            _stats = null;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Ошибка очистки: {ex.Message}";
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+            _currentOp = null;
+        }
+    }
+
+    private async Task ExtractCities()
+    {
+        _busy = true;
+        _currentOp = "cities";
+        _message = null;
+        try
+        {
+            var (updated, skipped) = await SheetsApi.ExtractCitiesAsync();
+            _message = $"Города извлечены: обновлено {updated}, пропущено {skipped}";
+            _isError = false;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Ошибка: {ex.Message}";
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+            _currentOp = null;
+        }
+    }
+
+    private void ShowClearConfirm()
+    {
+        _showClearConfirm = true;
+    }
+}
