@@ -17,9 +17,11 @@ public class GoogleSheetsService
 
     public async Task<List<Business>> GetBusinessesAsync()
     {
-        _logger.LogInformation("Fetching sheet via Google API");
+        _logger.LogInformation("Fetching sheet via Google API, headerRow={HeaderRow}", _headerRow);
 
         var allRows = await _api.ReadAllDataAsync();
+
+        _logger.LogInformation("API returned {Count} rows", allRows.Count);
 
         if (allRows.Count < _headerRow + 1)
         {
@@ -30,6 +32,8 @@ public class GoogleSheetsService
         var headers = allRows[_headerRow - 1]
             .Select(h => h?.ToString()?.Trim() ?? "")
             .ToList();
+
+        _logger.LogInformation("Headers ({Count}): {Headers}", headers.Count, string.Join(", ", headers.Take(10)));
 
         var nameColumnIndex = FindNameColumn(headers);
 
