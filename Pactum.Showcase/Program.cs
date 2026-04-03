@@ -30,7 +30,7 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 
 // Services
 builder.Services.AddSingleton<GoogleSheetsApiService>();
-builder.Services.AddScoped<DataService>();
+builder.Services.AddSingleton<DataService>();
 builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 

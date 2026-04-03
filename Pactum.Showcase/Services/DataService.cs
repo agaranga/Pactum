@@ -11,6 +11,9 @@ public class DataService
     private readonly GoogleSheetsApiService _sheetsApi;
     private readonly ILogger<DataService> _logger;
 
+    private List<BusinessEntity>? _cache;
+    private readonly SemaphoreSlim _lock = new(1, 1);
+
     public DataService(IDbContextFactory<AppDbContext> dbFactory, GoogleSheetsApiService sheetsApi, ILogger<DataService> logger)
     {
         _dbFactory = dbFactory;
@@ -20,36 +23,86 @@ public class DataService
 
     public async Task<List<BusinessEntity>> GetAllAsync()
     {
-        using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Businesses.OrderBy(b => b.SheetRow).ToListAsync();
+        if (_cache != null)
+            return _cache;
+
+        await _lock.WaitAsync();
+        try
+        {
+            if (_cache != null)
+                return _cache;
+
+            using var db = await _dbFactory.CreateDbContextAsync();
+            var data = await db.Businesses.OrderBy(b => b.SheetRow).ToListAsync();
+
+            if (data.Count == 0)
+            {
+                _logger.LogInformation("Database empty, auto-loading from Google Sheets");
+                await ReloadFromSheetsInternalAsync();
+                using var db2 = await _dbFactory.CreateDbContextAsync();
+                data = await db2.Businesses.OrderBy(b => b.SheetRow).ToListAsync();
+            }
+
+            _cache = data;
+            return _cache;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task<BusinessEntity?> GetByIdAsync(int id)
     {
-        using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Businesses.FindAsync(id);
+        var all = await GetAllAsync();
+        return all.FirstOrDefault(b => b.Id == id);
     }
 
     public async Task<int> GetCountAsync()
     {
-        using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Businesses.CountAsync();
+        var all = await GetAllAsync();
+        return all.Count;
     }
 
     public async Task ClearAsync()
     {
-        using var db = await _dbFactory.CreateDbContextAsync();
-        db.Businesses.RemoveRange(db.Businesses);
-        await db.SaveChangesAsync();
-        _logger.LogInformation("Database cleared");
+        await _lock.WaitAsync();
+        try
+        {
+            using var db = await _dbFactory.CreateDbContextAsync();
+            db.Businesses.RemoveRange(db.Businesses);
+            await db.SaveChangesAsync();
+            _cache = [];
+            _logger.LogInformation("Database cleared");
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     public async Task<int> ReloadFromSheetsAsync()
     {
+        await _lock.WaitAsync();
+        try
+        {
+            var count = await ReloadFromSheetsInternalAsync();
+            using var db = await _dbFactory.CreateDbContextAsync();
+            _cache = await db.Businesses.OrderBy(b => b.SheetRow).ToListAsync();
+            return count;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private async Task<int> ReloadFromSheetsInternalAsync()
+    {
         _logger.LogInformation("Reloading data from Google Sheets");
 
         var allRows = await _sheetsApi.ReadAllDataAsync();
-        var headerRow = 2; // 1-based
+        var headerRow = 2;
         if (allRows.Count < headerRow + 1)
         {
             _logger.LogWarning("Sheet has too few rows: {Count}", allRows.Count);
