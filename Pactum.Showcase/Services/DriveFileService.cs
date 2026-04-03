@@ -100,25 +100,52 @@ public class DriveFileService
     /// </summary>
     public async Task<(string? html, string? error)> ReadMainDocAsync(string externalId)
     {
+        var diag = new System.Text.StringBuilder();
+        diag.AppendLine($"<hr/><small class='text-muted'><b>Диагностика:</b><br/>");
+        diag.AppendLine($"ExternalId: {externalId}<br/>");
+
         var folderId = await FindBizFolderAsync(externalId);
+        diag.AppendLine($"FolderId: {folderId ?? "NOT FOUND"}<br/>");
         if (folderId == null)
-            return (null, "Папка не найдена на Google Drive");
+        {
+            // Show what city folders we have
+            diag.AppendLine($"City folders cached: {string.Join(", ", _cityFolderIds.Keys)}<br/>");
+            diag.AppendLine("</small>");
+            return (null, "Папка не найдена на Google Drive" + diag);
+        }
 
-        // Find doc file with same name as folder (or starting with externalId)
-        var req = _drive.Files.List();
-        req.Q = $"'{folderId}' in parents and (mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType = 'application/msword' or mimeType = 'application/vnd.google-apps.document')";
-        req.Fields = "files(id, name, mimeType)";
-        var files = await req.ExecuteAsync();
+        // List ALL files in folder for diagnostics
+        var allReq = _drive.Files.List();
+        allReq.Q = $"'{folderId}' in parents";
+        allReq.Fields = "files(id, name, mimeType)";
+        var allFiles = await allReq.ExecuteAsync();
+        diag.AppendLine($"Файлов в папке: {allFiles.Files.Count}<br/>");
+        foreach (var f in allFiles.Files)
+            diag.AppendLine($"  - {f.Name} [{f.MimeType}]<br/>");
 
-        // Find main doc — name starts with ID but does NOT contain "карточка"
-        var mainDoc = files.Files.FirstOrDefault(f =>
+        // Find doc files
+        var docFiles = allFiles.Files.Where(f =>
+            f.MimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            || f.MimeType == "application/msword"
+            || f.MimeType == "application/vnd.google-apps.document").ToList();
+
+        diag.AppendLine($"Документов: {docFiles.Count}<br/>");
+
+        var mainDoc = docFiles.FirstOrDefault(f =>
             f.Name.StartsWith(externalId, StringComparison.OrdinalIgnoreCase)
             && !f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase));
 
-        if (mainDoc == null)
-            return (null, "Файл описания не найден");
+        diag.AppendLine($"Main doc match: {mainDoc?.Name ?? "NOT FOUND"}<br/>");
+        diag.AppendLine("</small>");
 
-        return await ReadDocContentAsync(mainDoc);
+        if (mainDoc == null)
+            return (null, "Файл описания не найден" + diag);
+
+        var (html, error) = await ReadDocContentAsync(mainDoc);
+        if (error != null)
+            return (null, error + diag);
+
+        return (html + diag, null);
     }
 
     /// <summary>
