@@ -5,6 +5,7 @@
 @using Pactum.Showcase.Services
 @attribute [Authorize]
 @inject DataService DataService
+@inject DriveFileService DriveService
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Рабочий стол</PageTitle>
@@ -51,9 +52,7 @@
         @if (_selected == null)
         {
             <div class="d-flex justify-content-center align-items-center h-100 text-muted">
-                <div class="text-center">
-                    <h5>Выберите бизнес из списка</h5>
-                </div>
+                <h5>Выберите бизнес из списка</h5>
             </div>
         }
         else
@@ -61,54 +60,47 @@
             <div class="p-3">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">@_selected.Name</h5>
-                    <span class="badge bg-secondary">@_selected.ExternalId</span>
+                    @if (!string.IsNullOrWhiteSpace(_selected.ExternalId))
+                    {
+                        <span class="badge bg-secondary">@_selected.ExternalId</span>
+                    }
                 </div>
 
                 <!-- Tabs -->
                 <ul class="nav nav-tabs">
                     <li class="nav-item">
-                        <button class="nav-link @(_activeTab == 0 ? "active" : "")" @onclick="() => _activeTab = 0">Данные</button>
+                        <button class="nav-link @(_activeTab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">Данные</button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link @(_activeTab == 1 ? "active" : "")" @onclick="() => _activeTab = 1">Схема</button>
+                        <button class="nav-link @(_activeTab == 1 ? "active" : "")" @onclick="() => SwitchTab(1)"
+                                disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Схема</button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link @(_activeTab == 2 ? "active" : "")" @onclick="() => _activeTab = 2">Описание</button>
+                        <button class="nav-link @(_activeTab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)"
+                                disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Описание</button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link @(_activeTab == 3 ? "active" : "")" @onclick="() => _activeTab = 3">Картинки</button>
+                        <button class="nav-link @(_activeTab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)"
+                                disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Картинки</button>
                     </li>
                 </ul>
 
                 <div class="tab-content pt-3">
                     @if (_activeTab == 0)
                     {
-                        <!-- Данные -->
-                        <div class="card">
-                            <div class="card-body p-0">
-                                <table class="table table-sm table-striped mb-0">
-                                    @foreach (var prop in GetProperties(_selected))
-                                    {
-                                        <tr>
-                                            <th class="text-muted ps-3" style="width: 35%">@prop.Key</th>
-                                            <td>@prop.Value</td>
-                                        </tr>
-                                    }
-                                </table>
-                            </div>
-                        </div>
+                        @RenderDataTab()
                     }
                     else if (_activeTab == 1)
                     {
-                        <div class="text-muted p-4 text-center">Схема — будет реализовано</div>
+                        @RenderDocTab(_mainDocHtml, _mainDocError, _mainDocLoading, "описания")
                     }
                     else if (_activeTab == 2)
                     {
-                        <div class="text-muted p-4 text-center">Описание — будет реализовано</div>
+                        @RenderDocTab(_cardDocHtml, _cardDocError, _cardDocLoading, "карточки")
                     }
                     else if (_activeTab == 3)
                     {
-                        <div class="text-muted p-4 text-center">Картинки — будет реализовано</div>
+                        @RenderImagesTab()
                     }
                 </div>
             </div>
@@ -121,6 +113,24 @@
     private BusinessEntity? _selected;
     private int _activeTab;
     private bool _initialized;
+
+    // Tab 1: main doc
+    private string? _mainDocHtml;
+    private string? _mainDocError;
+    private bool _mainDocLoading;
+    private string? _mainDocLoadedForId;
+
+    // Tab 2: card doc
+    private string? _cardDocHtml;
+    private string? _cardDocError;
+    private bool _cardDocLoading;
+    private string? _cardDocLoadedForId;
+
+    // Tab 3: images
+    private List<ImageInfo>? _images;
+    private string? _imagesError;
+    private bool _imagesLoading;
+    private string? _imagesLoadedForId;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -136,7 +146,133 @@
     {
         _selected = biz;
         _activeTab = 0;
+        // Reset loaded states so tabs reload for new business
+        _mainDocLoadedForId = null;
+        _cardDocLoadedForId = null;
+        _imagesLoadedForId = null;
     }
+
+    private async Task SwitchTab(int tab)
+    {
+        _activeTab = tab;
+        if (_selected == null || string.IsNullOrWhiteSpace(_selected.ExternalId))
+            return;
+
+        var eid = _selected.ExternalId;
+
+        if (tab == 1 && _mainDocLoadedForId != eid)
+        {
+            _mainDocLoading = true;
+            _mainDocHtml = null;
+            _mainDocError = null;
+            StateHasChanged();
+            var (html, error) = await DriveService.ReadMainDocAsync(eid);
+            _mainDocHtml = html;
+            _mainDocError = error;
+            _mainDocLoading = false;
+            _mainDocLoadedForId = eid;
+        }
+        else if (tab == 2 && _cardDocLoadedForId != eid)
+        {
+            _cardDocLoading = true;
+            _cardDocHtml = null;
+            _cardDocError = null;
+            StateHasChanged();
+            var (html, error) = await DriveService.ReadCardDocAsync(eid);
+            _cardDocHtml = html;
+            _cardDocError = error;
+            _cardDocLoading = false;
+            _cardDocLoadedForId = eid;
+        }
+        else if (tab == 3 && _imagesLoadedForId != eid)
+        {
+            _imagesLoading = true;
+            _images = null;
+            _imagesError = null;
+            StateHasChanged();
+            var (images, error) = await DriveService.ListImagesAsync(eid);
+            _images = images;
+            _imagesError = error;
+            _imagesLoading = false;
+            _imagesLoadedForId = eid;
+        }
+    }
+
+    private RenderFragment RenderDataTab() => __builder =>
+    {
+        <div class="card">
+            <div class="card-body p-0">
+                <table class="table table-sm table-striped mb-0">
+                    @foreach (var prop in GetProperties(_selected!))
+                    {
+                        <tr>
+                            <th class="text-muted ps-3" style="width: 35%">@prop.Key</th>
+                            <td style="white-space: pre-wrap">@prop.Value</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderDocTab(string? html, string? error, bool loading, string docType) => __builder =>
+    {
+        if (loading)
+        {
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2 text-muted">Загрузка @docType...</p>
+            </div>
+        }
+        else if (error != null)
+        {
+            <div class="alert alert-warning">@error</div>
+        }
+        else if (html != null)
+        {
+            <div class="card">
+                <div class="card-body doc-content">
+                    @((MarkupString)html)
+                </div>
+            </div>
+        }
+    };
+
+    private RenderFragment RenderImagesTab() => __builder =>
+    {
+        if (_imagesLoading)
+        {
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2 text-muted">Загрузка картинок...</p>
+            </div>
+        }
+        else if (_imagesError != null)
+        {
+            <div class="alert alert-warning">@_imagesError</div>
+        }
+        else if (_images != null && _images.Count == 0)
+        {
+            <div class="text-muted text-center py-4">Картинок нет</div>
+        }
+        else if (_images != null)
+        {
+            <div class="row g-3">
+                @foreach (var img in _images)
+                {
+                    <div class="col-6 col-md-4 col-lg-3">
+                        <div class="card h-100">
+                            <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
+                                 style="object-fit: cover; height: 200px;" loading="lazy" />
+                            <div class="card-body p-2">
+                                <small class="text-muted text-truncate d-block">@img.Name</small>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    };
 
     private Dictionary<string, string> GetProperties(BusinessEntity biz)
     {

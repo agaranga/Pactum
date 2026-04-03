@@ -31,6 +31,7 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 // Services
 builder.Services.AddSingleton<GoogleSheetsApiService>();
 builder.Services.AddSingleton<DataService>();
+builder.Services.AddSingleton<DriveFileService>();
 builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 
@@ -88,6 +89,14 @@ app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     ctx.Response.Redirect("/login");
 });
+
+app.MapGet("/api/images/{fileId}", async (string fileId, DriveFileService driveService) =>
+{
+    var result = await driveService.GetImageAsync(fileId);
+    if (result == null)
+        return Results.NotFound();
+    return Results.File(result.Value.data, result.Value.mimeType);
+}).RequireAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
