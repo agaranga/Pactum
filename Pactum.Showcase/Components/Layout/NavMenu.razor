@@ -1,45 +1,29 @@
 <AuthorizeView>
-    <Authorized Context="navAuth">
-        <div class="top-row ps-3 navbar navbar-dark">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="">Pactum</a>
+    <Authorized Context="authState">
+        <nav class="navbar navbar-expand-sm navbar-dark bg-dark px-3">
+            <a class="navbar-brand" href="">Pactum</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Витрина</NavLink>
+                    </li>
+                    <li class="nav-item">
+                        <NavLink class="nav-link" href="workbench">Рабочий стол</NavLink>
+                    </li>
+                    <AuthorizeView Roles="Admin" Context="adminCtx">
+                        <Authorized>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="admin">Админ</NavLink>
+                            </li>
+                        </Authorized>
+                    </AuthorizeView>
+                </ul>
+                <span class="navbar-text me-3">@authState.User.Identity?.Name</span>
+                <a class="btn btn-outline-light btn-sm" href="logout">Выйти</a>
             </div>
-        </div>
+        </nav>
     </Authorized>
 </AuthorizeView>
-
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <AuthorizeView>
-            <Authorized Context="authState">
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Витрина
-                    </NavLink>
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="workbench">
-                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Рабочий стол
-                    </NavLink>
-                </div>
-                <AuthorizeView Roles="Admin" Context="adminCtx">
-                    <Authorized>
-                        <div class="nav-item px-3">
-                            <NavLink class="nav-link" href="admin">
-                                <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span> Админ
-                            </NavLink>
-                        </div>
-                    </Authorized>
-                </AuthorizeView>
-                <div class="nav-item px-3 mt-auto">
-                    <div class="nav-link text-muted small">@authState.User.Identity?.Name</div>
-                    <NavLink class="nav-link" href="logout">
-                        Выйти
-                    </NavLink>
-                </div>
-            </Authorized>
-        </AuthorizeView>
-    </nav>
-</div>

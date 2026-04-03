@@ -1,142 +1,62 @@
 @page "/"
 @page "/showcase"
+@using System.Text.Json
 @using Microsoft.AspNetCore.Authorization
 @using Pactum.Showcase.Models
 @using Pactum.Showcase.Services
 @attribute [Authorize]
-@inject GoogleSheetsService SheetsService
-@inject DescriptionService DescriptionService
+@inject DataService DataService
 @rendermode InteractiveServer
 
 <PageTitle>Pactum Showcase</PageTitle>
 
 <div class="container-fluid px-4 py-3">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="mb-0">Pactum Showcase</h1>
-        <button class="btn btn-outline-primary" @onclick="LoadBusinesses" disabled="@_loading">
-            @if (_loading)
-            {
-                <span class="spinner-border spinner-border-sm me-1"></span>
-            }
-            Обновить из таблицы
-        </button>
-    </div>
-
-    @if (_error != null)
-    {
-        <div class="alert alert-danger alert-dismissible">
-            @_error
-            <button type="button" class="btn-close" @onclick="() => _error = null"></button>
-        </div>
-    }
+    <h4 class="mb-3">Витрина</h4>
 
     @if (_businesses == null)
     {
         <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status"></div>
-            <p class="mt-2 text-muted">Загрузка данных из Google Sheets...</p>
+            <div class="spinner-border text-primary"></div>
+            <p class="mt-2 text-muted">Загрузка...</p>
         </div>
     }
     else if (_businesses.Count == 0)
     {
-        <div class="alert alert-info">Таблица пуста или не содержит данных.</div>
+        <div class="alert alert-info">Нет данных. Загрузите из Админ-панели.</div>
     }
     else
     {
-        <div class="row g-4">
+        <div class="row g-3">
             @foreach (var biz in _businesses)
             {
-                <div class="col-12 col-lg-6">
+                <div class="col-12 col-md-6 col-lg-4">
                     <div class="card h-100 shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">@biz.Name</h5>
-                            <span class="badge bg-secondary">Строка @biz.Row</span>
-                        </div>
                         <div class="card-body">
-                            @if (biz.GeneratedDescription != null)
+                            <h6 class="card-title">@biz.Name</h6>
+                            @if (!string.IsNullOrWhiteSpace(biz.ActivityType))
                             {
-                                <div class="generated-description">
-                                    @((MarkupString)Markdig.Markdown.ToHtml(biz.GeneratedDescription))
-                                </div>
+                                <p class="card-text text-muted small mb-1">@biz.ActivityType</p>
                             }
-                            else
+                            @if (!string.IsNullOrWhiteSpace(biz.City) || !string.IsNullOrWhiteSpace(biz.Address))
                             {
-                                <table class="table table-sm table-borderless mb-0">
-                                    @foreach (var prop in biz.Properties)
-                                    {
-                                        <tr>
-                                            <th class="text-muted" style="width:40%">@prop.Key</th>
-                                            <td>@prop.Value</td>
-                                        </tr>
-                                    }
-                                </table>
+                                <p class="card-text small">@biz.City @biz.Address</p>
                             }
                         </div>
-                        <div class="card-footer bg-transparent">
-                            @if (biz.GeneratedDescription != null)
-                            {
-                                <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-outline-secondary" @onclick="() => biz.GeneratedDescription = null">
-                                        Показать параметры
-                                    </button>
-                                    <button class="btn btn-outline-primary" @onclick="() => GenerateDescription(biz)" disabled="@biz.IsGenerating">
-                                        Перегенерировать
-                                    </button>
-                                    <button class="btn btn-outline-success" @onclick="() => CopyToClipboard(biz.GeneratedDescription)">
-                                        Копировать
-                                    </button>
-                                </div>
-                            }
-                            else if (_isAdmin)
-                            {
-                                <button class="btn btn-sm btn-primary" @onclick="() => GenerateDescription(biz)" disabled="@biz.IsGenerating">
-                                    @if (biz.IsGenerating)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1"></span>
-                                        <span>Генерация...</span>
-                                    }
-                                    else
-                                    {
-                                        <span>Сгенерировать описание</span>
-                                    }
-                                </button>
-                            }
-                        </div>
+                        @if (!string.IsNullOrWhiteSpace(biz.ExternalId))
+                        {
+                            <div class="card-footer bg-transparent">
+                                <span class="badge bg-secondary">@biz.ExternalId</span>
+                            </div>
+                        }
                     </div>
                 </div>
             }
         </div>
-
-        @if (_isAdmin)
-        {
-            <div class="mt-4">
-                <button class="btn btn-success" @onclick="GenerateAll" disabled="@_generatingAll">
-                    @if (_generatingAll)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                        <span>Генерация всех (@_generatedCount / @_businesses.Count)...</span>
-                    }
-                    else
-                    {
-                        <span>Сгенерировать все описания</span>
-                    }
-                </button>
-            </div>
-        }
     }
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthState { get; set; }
-
-    private bool _isAdmin;
-    private List<Business>? _businesses;
-    private string? _error;
-    private bool _loading;
-    private bool _generatingAll;
-    private int _generatedCount;
-
+    private List<BusinessEntity>? _businesses;
     private bool _initialized;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -144,74 +64,8 @@
         if (firstRender && !_initialized)
         {
             _initialized = true;
-            if (AuthState != null)
-            {
-                var state = await AuthState;
-                _isAdmin = state.User.IsInRole("Admin");
-            }
-            await LoadBusinesses();
+            _businesses = await DataService.GetAllAsync();
             StateHasChanged();
         }
-    }
-
-    private async Task LoadBusinesses()
-    {
-        _loading = true;
-        _error = null;
-        try
-        {
-            _businesses = await SheetsService.GetBusinessesAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = $"Ошибка загрузки: {ex.Message}";
-            _businesses = [];
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private async Task GenerateDescription(Business biz)
-    {
-        biz.IsGenerating = true;
-        try
-        {
-            biz.GeneratedDescription = await DescriptionService.GenerateDescriptionAsync(biz);
-        }
-        catch (Exception ex)
-        {
-            _error = $"Ошибка генерации для {biz.Name}: {ex.Message}";
-        }
-        finally
-        {
-            biz.IsGenerating = false;
-        }
-    }
-
-    private async Task GenerateAll()
-    {
-        _generatingAll = true;
-        _generatedCount = 0;
-        foreach (var biz in _businesses!)
-        {
-            if (biz.GeneratedDescription == null)
-            {
-                await GenerateDescription(biz);
-                _generatedCount++;
-                StateHasChanged();
-            }
-            else
-            {
-                _generatedCount++;
-            }
-        }
-        _generatingAll = false;
-    }
-
-    private async Task CopyToClipboard(string text)
-    {
-        // Will be handled via JS interop
     }
 }

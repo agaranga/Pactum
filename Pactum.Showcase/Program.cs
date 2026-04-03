@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
 using Pactum.Showcase.Components;
+using Pactum.Showcase.Data;
 using Pactum.Showcase.Middleware;
 using Pactum.Showcase.Services;
 
@@ -21,12 +23,25 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
+// Database
+var dbPath = Path.Combine(builder.Environment.ContentRootPath, "pactum.db");
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
+
+// Services
 builder.Services.AddSingleton<GoogleSheetsApiService>();
-builder.Services.AddSingleton<GoogleSheetsService>();
+builder.Services.AddScoped<DataService>();
 builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 
 var app = builder.Build();
+
+// Ensure DB created
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.EnsureCreatedAsync();
+}
 
 if (!app.Environment.IsDevelopment())
 {

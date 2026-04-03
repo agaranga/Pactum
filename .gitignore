@@ -426,3 +426,8 @@ appsettings.Development.json
 # Google Service Account credentials
 google-credentials.json
 **/google-credentials.json
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal

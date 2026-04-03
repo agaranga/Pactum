@@ -1,171 +1,125 @@
 @page "/workbench"
+@using System.Text.Json
 @using Microsoft.AspNetCore.Authorization
 @using Pactum.Showcase.Models
 @using Pactum.Showcase.Services
 @attribute [Authorize]
-@inject GoogleSheetsService SheetsService
-@inject DescriptionService DescriptionService
+@inject DataService DataService
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Рабочий стол</PageTitle>
 
-<div class="d-flex flex-column vh-100">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
-        <h5 class="mb-0">Рабочий стол</h5>
-        <button class="btn btn-sm btn-outline-primary" @onclick="LoadBusinesses" disabled="@_loading">
-            @if (_loading)
-            {
-                <span class="spinner-border spinner-border-sm me-1"></span>
-            }
-            Обновить
-        </button>
+<div class="d-flex" style="height: calc(100vh - 56px);">
+    <!-- Left: list (30%) -->
+    <div class="border-end overflow-auto" style="width: 30%; min-width: 250px;">
+        @if (_businesses == null)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary"></div>
+            </div>
+        }
+        else if (_businesses.Count == 0)
+        {
+            <div class="p-3 text-muted">Нет данных. Загрузите из Админ-панели.</div>
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var biz in _businesses)
+                {
+                    var isSelected = _selected?.Id == biz.Id;
+                    <button class="list-group-item list-group-item-action @(isSelected ? "active" : "") py-2 px-3"
+                            @onclick="() => SelectBusiness(biz)">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="text-truncate me-2">
+                                <div class="fw-semibold text-truncate">@biz.Name</div>
+                                <small class="@(isSelected ? "text-light" : "text-muted")">@biz.City @biz.ActivityType</small>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(biz.ExternalId))
+                            {
+                                <span class="badge @(isSelected ? "bg-light text-dark" : "bg-secondary") text-nowrap">@biz.ExternalId</span>
+                            }
+                        </div>
+                    </button>
+                }
+            </div>
+        }
     </div>
 
-    @if (_error != null)
-    {
-        <div class="alert alert-danger alert-dismissible m-2 mb-0">
-            @_error
-            <button type="button" class="btn-close" @onclick="() => _error = null"></button>
-        </div>
-    }
-
-    <!-- Main content -->
-    <div class="flex-grow-1 d-flex overflow-hidden">
-        <!-- Left: table -->
-        <div class="border-end overflow-auto" style="width: 45%; min-width: 300px;">
-            @if (_businesses == null)
-            {
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary"></div>
-                    <p class="mt-2 text-muted">Загрузка...</p>
+    <!-- Right: detail panel with tabs (70%) -->
+    <div class="flex-grow-1 overflow-auto">
+        @if (_selected == null)
+        {
+            <div class="d-flex justify-content-center align-items-center h-100 text-muted">
+                <div class="text-center">
+                    <h5>Выберите бизнес из списка</h5>
                 </div>
-            }
-            else
-            {
-                <table class="table table-hover table-sm mb-0 workbench-table">
-                    <thead class="table-light sticky-top">
-                        <tr>
-                            <th style="width:40px">#</th>
-                            <th>Название</th>
-                            <th>Вид деятельности</th>
-                            <th>Адрес</th>
-                            <th style="width:90px">Статус</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var biz in _businesses)
-                        {
-                            var isSelected = _selected == biz;
-                            <tr class="@(isSelected ? "table-primary" : "")" style="cursor:pointer"
-                                @onclick="() => SelectBusiness(biz)">
-                                <td class="text-muted">@biz.Row</td>
-                                <td class="fw-semibold text-truncate" style="max-width:200px">@biz.Name</td>
-                                <td class="text-truncate" style="max-width:160px">@biz.Properties.GetValueOrDefault("Вид деятельности", "")</td>
-                                <td class="text-truncate" style="max-width:160px">@biz.Properties.GetValueOrDefault("Адрес", "")</td>
-                                <td>
-                                    @if (biz.GeneratedDescription != null)
+            </div>
+        }
+        else
+        {
+            <div class="p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">@_selected.Name</h5>
+                    <span class="badge bg-secondary">@_selected.ExternalId</span>
+                </div>
+
+                <!-- Tabs -->
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == 0 ? "active" : "")" @onclick="() => _activeTab = 0">Данные</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == 1 ? "active" : "")" @onclick="() => _activeTab = 1">Схема</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == 2 ? "active" : "")" @onclick="() => _activeTab = 2">Описание</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(_activeTab == 3 ? "active" : "")" @onclick="() => _activeTab = 3">Картинки</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content pt-3">
+                    @if (_activeTab == 0)
+                    {
+                        <!-- Данные -->
+                        <div class="card">
+                            <div class="card-body p-0">
+                                <table class="table table-sm table-striped mb-0">
+                                    @foreach (var prop in GetProperties(_selected))
                                     {
-                                        <span class="badge bg-success">Готово</span>
+                                        <tr>
+                                            <th class="text-muted ps-3" style="width: 35%">@prop.Key</th>
+                                            <td>@prop.Value</td>
+                                        </tr>
                                     }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary">—</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </div>
-
-        <!-- Right: detail panel -->
-        <div class="flex-grow-1 overflow-auto p-3">
-            @if (_selected == null)
-            {
-                <div class="text-center text-muted py-5">
-                    <h4>Выберите бизнес из списка</h4>
-                    <p>Нажмите на строку в таблице, чтобы увидеть подробности</p>
-                </div>
-            }
-            else
-            {
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <h4 class="mb-0">@_selected.Name</h4>
-                    <span class="badge bg-secondary">Строка @_selected.Row</span>
-                </div>
-
-                <!-- Properties -->
-                <div class="card mb-3">
-                    <div class="card-header py-2">
-                        <strong>Параметры из таблицы</strong>
-                    </div>
-                    <div class="card-body p-0">
-                        <table class="table table-sm table-striped mb-0">
-                            @foreach (var prop in _selected.Properties)
-                            {
-                                <tr>
-                                    <th class="text-muted ps-3" style="width:40%">@prop.Key</th>
-                                    <td>@prop.Value</td>
-                                </tr>
-                            }
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Generate button (admin only) -->
-                @if (_isAdmin)
-                {
-                    <div class="mb-3">
-                        <button class="btn btn-primary" @onclick="() => GenerateDescription(_selected)"
-                                disabled="@_selected.IsGenerating">
-                            @if (_selected.IsGenerating)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
-                                <span>Генерация...</span>
-                            }
-                            else if (_selected.GeneratedDescription != null)
-                            {
-                                <span>Перегенерировать описание</span>
-                            }
-                            else
-                            {
-                                <span>Сгенерировать описание</span>
-                            }
-                        </button>
-                    </div>
-                }
-
-                <!-- Generated description -->
-                @if (_selected.GeneratedDescription != null)
-                {
-                    <div class="card border-success">
-                        <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center py-2">
-                            <strong>Сгенерированное описание</strong>
-                            <button class="btn btn-sm btn-outline-success" @onclick="() => CopyToClipboard(_selected.GeneratedDescription)">
-                                Копировать
-                            </button>
+                                </table>
+                            </div>
                         </div>
-                        <div class="card-body generated-description">
-                            @((MarkupString)Markdig.Markdown.ToHtml(_selected.GeneratedDescription))
-                        </div>
-                    </div>
-                }
-            }
-        </div>
+                    }
+                    else if (_activeTab == 1)
+                    {
+                        <div class="text-muted p-4 text-center">Схема — будет реализовано</div>
+                    }
+                    else if (_activeTab == 2)
+                    {
+                        <div class="text-muted p-4 text-center">Описание — будет реализовано</div>
+                    }
+                    else if (_activeTab == 3)
+                    {
+                        <div class="text-muted p-4 text-center">Картинки — будет реализовано</div>
+                    }
+                </div>
+            </div>
+        }
     </div>
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthState { get; set; }
-
-    private bool _isAdmin;
-    private List<Business>? _businesses;
-    private Business? _selected;
-    private string? _error;
-    private bool _loading;
+    private List<BusinessEntity>? _businesses;
+    private BusinessEntity? _selected;
+    private int _activeTab;
     private bool _initialized;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -173,60 +127,26 @@
         if (firstRender && !_initialized)
         {
             _initialized = true;
-            if (AuthState != null)
-            {
-                var state = await AuthState;
-                _isAdmin = state.User.IsInRole("Admin");
-            }
-            await LoadBusinesses();
+            _businesses = await DataService.GetAllAsync();
             StateHasChanged();
         }
     }
 
-    private void SelectBusiness(Business biz)
+    private void SelectBusiness(BusinessEntity biz)
     {
         _selected = biz;
+        _activeTab = 0;
     }
 
-    private async Task LoadBusinesses()
+    private Dictionary<string, string> GetProperties(BusinessEntity biz)
     {
-        _loading = true;
-        _error = null;
         try
         {
-            _businesses = await SheetsService.GetBusinessesAsync();
-            _selected = null;
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(biz.PropertiesJson) ?? new();
         }
-        catch (Exception ex)
+        catch
         {
-            _error = $"Ошибка загрузки: {ex.Message}";
-            _businesses = [];
+            return new();
         }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private async Task GenerateDescription(Business biz)
-    {
-        biz.IsGenerating = true;
-        try
-        {
-            biz.GeneratedDescription = await DescriptionService.GenerateDescriptionAsync(biz);
-        }
-        catch (Exception ex)
-        {
-            _error = $"Ошибка генерации для {biz.Name}: {ex.Message}";
-        }
-        finally
-        {
-            biz.IsGenerating = false;
-        }
-    }
-
-    private async Task CopyToClipboard(string text)
-    {
-        // TODO: JS interop
     }
 }
