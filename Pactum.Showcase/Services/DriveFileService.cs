@@ -215,6 +215,45 @@ public class DriveFileService
         }
     }
 
+    /// <summary>
+    /// Check what files exist in the business folder.
+    /// </summary>
+    public async Task<FilePresenceInfo> CheckFilesAsync(string externalId)
+    {
+        var info = new FilePresenceInfo();
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null)
+            return info;
+
+        info.HasFolder = true;
+
+        var req = _drive.Files.List();
+        req.Q = $"'{folderId}' in parents";
+        req.Fields = "files(name, mimeType)";
+        var result = await req.ExecuteAsync();
+
+        foreach (var f in result.Files)
+        {
+            var isDoc = f.MimeType is "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                or "application/msword" or "application/vnd.google-apps.document";
+
+            if (isDoc && f.Name.StartsWith(externalId, StringComparison.OrdinalIgnoreCase)
+                && !f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase))
+            {
+                info.HasMainDoc = true;
+                info.MainDocType = f.MimeType == "application/vnd.google-apps.document" ? "Google Doc" : "Word";
+            }
+
+            if (isDoc && f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase))
+                info.HasCardDoc = true;
+
+            if (f.MimeType?.StartsWith("image/") == true)
+                info.HasImages = true;
+        }
+
+        return info;
+    }
+
     private async Task<(string? html, string? error)> ReadDocContentAsync(Google.Apis.Drive.v3.Data.File docFile)
     {
         try
@@ -265,6 +304,15 @@ public class DriveFileService
             return (null, $"Ошибка чтения файла: {ex.Message}");
         }
     }
+}
+
+public class FilePresenceInfo
+{
+    public bool HasFolder { get; set; }
+    public bool HasMainDoc { get; set; }
+    public bool HasCardDoc { get; set; }
+    public bool HasImages { get; set; }
+    public string MainDocType { get; set; } = ""; // "Word" or "Google Doc"
 }
 
 public class ImageInfo

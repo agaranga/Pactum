@@ -12,39 +12,93 @@
 
 <div class="d-flex" style="height: calc(100vh - 56px);">
     <!-- Left: list (30%) -->
-    <div class="border-end overflow-auto" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
-        @if (_businesses == null)
-        {
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary"></div>
+    <div class="border-end d-flex flex-column" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
+        <!-- Toolbar -->
+        <div class="p-2 border-bottom bg-light">
+            <input type="text" class="form-control form-control-sm mb-1" placeholder="Поиск по названию..."
+                   @bind="_searchText" @bind:event="oninput" />
+            <div class="d-flex gap-1">
+                <select class="form-select form-select-sm" @bind="_filterCity">
+                    <option value="">Все города</option>
+                    @if (_cities != null)
+                    {
+                        @foreach (var city in _cities)
+                        {
+                            <option value="@city">@city</option>
+                        }
+                    }
+                </select>
+                <select class="form-select form-select-sm" @bind="_filterActivity">
+                    <option value="">Все виды</option>
+                    @if (_activities != null)
+                    {
+                        @foreach (var act in _activities)
+                        {
+                            <option value="@act">@act</option>
+                        }
+                    }
+                </select>
             </div>
-        }
-        else if (_businesses.Count == 0)
-        {
-            <div class="p-3 text-muted">Нет данных. Загрузите из Админ-панели.</div>
-        }
-        else
-        {
-            <div class="list-group list-group-flush">
-                @foreach (var biz in _businesses)
-                {
-                    var isSelected = _selected?.Id == biz.Id;
-                    <button class="list-group-item list-group-item-action @(isSelected ? "active" : "") py-2 px-3"
-                            @onclick="() => SelectBusiness(biz)">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="text-truncate me-2">
-                                <div class="fw-semibold text-truncate">@biz.Name</div>
-                                <small class="@(isSelected ? "text-light" : "text-muted")">@biz.City @biz.ActivityType</small>
+            <div class="d-flex justify-content-between align-items-center mt-1">
+                <small class="text-muted">@FilteredBusinesses.Count из @(_allBusinesses?.Count ?? 0)</small>
+                <select class="form-select form-select-sm" style="width: auto;" @bind="_sortBy">
+                    <option value="row">По порядку</option>
+                    <option value="name">По названию</option>
+                    <option value="city">По городу</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- List -->
+        <div class="overflow-auto flex-grow-1">
+            @if (_allBusinesses == null)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+            }
+            else if (FilteredBusinesses.Count == 0)
+            {
+                <div class="p-3 text-muted">Нет данных</div>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var biz in FilteredBusinesses)
+                    {
+                        var isSelected = _selected?.Id == biz.Id;
+                        var fileInfo = _fileInfoCache.GetValueOrDefault(biz.ExternalId ?? "");
+                        <button class="list-group-item list-group-item-action @(isSelected ? "active" : "") py-2 px-3"
+                                @onclick="() => SelectBusiness(biz)">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="text-truncate me-2">
+                                    <div class="fw-semibold text-truncate">@biz.Name</div>
+                                    <small class="@(isSelected ? "text-light" : "text-muted")">@biz.City @biz.ActivityType</small>
+                                    @if (!string.IsNullOrWhiteSpace(biz.ExternalId))
+                                    {
+                                        <br/>
+                                        <small class="@(isSelected ? "text-light" : "text-muted")">
+                                            @biz.ExternalId
+                                            @if (fileInfo != null)
+                                            {
+                                                @if (fileInfo.HasMainDoc)
+                                                {
+                                                    <span> · @fileInfo.MainDocType</span>
+                                                }
+                                                else if (fileInfo.HasFolder)
+                                                {
+                                                    <span> · нет документа</span>
+                                                }
+                                            }
+                                        </small>
+                                    }
+                                </div>
                             </div>
-                            @if (!string.IsNullOrWhiteSpace(biz.ExternalId))
-                            {
-                                <span class="badge @(isSelected ? "bg-light text-dark" : "bg-secondary") text-nowrap">@biz.ExternalId</span>
-                            }
-                        </div>
-                    </button>
-                }
-            </div>
-        }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
     </div>
 
     <!-- Right: detail panel with tabs (70%) -->
@@ -109,10 +163,21 @@
 </div>
 
 @code {
-    private List<BusinessEntity>? _businesses;
+    private List<BusinessEntity>? _allBusinesses;
     private BusinessEntity? _selected;
     private int _activeTab;
     private bool _initialized;
+
+    // Filters
+    private string _searchText = "";
+    private string _filterCity = "";
+    private string _filterActivity = "";
+    private string _sortBy = "row";
+    private List<string>? _cities;
+    private List<string>? _activities;
+
+    // File info cache
+    private readonly Dictionary<string, FilePresenceInfo> _fileInfoCache = new();
 
     // Tab 1: main doc
     private string? _mainDocHtml;
@@ -132,24 +197,93 @@
     private bool _imagesLoading;
     private string? _imagesLoadedForId;
 
+    private List<BusinessEntity> FilteredBusinesses
+    {
+        get
+        {
+            if (_allBusinesses == null) return [];
+
+            var result = _allBusinesses.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_searchText))
+                result = result.Where(b =>
+                    b.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+                    || (b.ExternalId ?? "").Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(_filterCity))
+                result = result.Where(b => b.City == _filterCity);
+
+            if (!string.IsNullOrWhiteSpace(_filterActivity))
+                result = result.Where(b => b.ActivityType == _filterActivity);
+
+            result = _sortBy switch
+            {
+                "name" => result.OrderBy(b => b.Name),
+                "city" => result.OrderBy(b => b.City).ThenBy(b => b.Name),
+                _ => result.OrderBy(b => b.SheetRow)
+            };
+
+            return result.ToList();
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && !_initialized)
         {
             _initialized = true;
-            _businesses = await DataService.GetAllAsync();
+            _allBusinesses = await DataService.GetAllAsync();
+
+            _cities = _allBusinesses
+                .Select(b => b.City)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+
+            _activities = _allBusinesses
+                .Select(b => b.ActivityType)
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Distinct()
+                .OrderBy(a => a)
+                .ToList();
+
+            // Load file presence info in background for items with ExternalId
+            _ = LoadFileInfoAsync();
+
             StateHasChanged();
         }
     }
 
-    private void SelectBusiness(BusinessEntity biz)
+    private async Task LoadFileInfoAsync()
+    {
+        if (_allBusinesses == null) return;
+
+        foreach (var biz in _allBusinesses.Where(b => !string.IsNullOrWhiteSpace(b.ExternalId)))
+        {
+            if (_fileInfoCache.ContainsKey(biz.ExternalId!))
+                continue;
+            try
+            {
+                var info = await DriveService.CheckFilesAsync(biz.ExternalId!);
+                _fileInfoCache[biz.ExternalId!] = info;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    private async Task SelectBusiness(BusinessEntity biz)
     {
         _selected = biz;
-        _activeTab = 0;
-        // Reset loaded states so tabs reload for new business
+        // Keep current tab, reset loaded data for new business
         _mainDocLoadedForId = null;
         _cardDocLoadedForId = null;
         _imagesLoadedForId = null;
+
+        // If on a non-data tab, load content for that tab
+        if (_activeTab > 0)
+            await SwitchTab(_activeTab);
     }
 
     private async Task SwitchTab(int tab)
@@ -226,7 +360,7 @@
         }
         else if (error != null)
         {
-            <div class="alert alert-warning">@error</div>
+            <div class="alert alert-warning">@((MarkupString)error)</div>
         }
         else if (html != null)
         {
