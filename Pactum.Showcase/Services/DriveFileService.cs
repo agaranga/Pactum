@@ -1,5 +1,6 @@
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
+using Google.Apis.Docs.v1;
 using Google.Apis.Services;
 using DocumentFormat.OpenXml.Packaging;
 
@@ -8,6 +9,7 @@ namespace Pactum.Showcase.Services;
 public class DriveFileService
 {
     private readonly DriveService _drive;
+    private readonly DocsService _docs;
     private readonly string _rootFolderId;
     private readonly ILogger<DriveFileService> _logger;
 
@@ -41,8 +43,10 @@ public class DriveFileService
         else
             throw new InvalidOperationException("Google credentials not configured");
 
-        credential = credential.CreateScoped(DriveService.Scope.DriveReadonly);
-        _drive = new DriveService(new BaseClientService.Initializer { HttpClientInitializer = credential });
+        credential = credential.CreateScoped(DriveService.Scope.DriveReadonly, DocsService.Scope.DocumentsReadonly);
+        var init = new BaseClientService.Initializer { HttpClientInitializer = credential };
+        _drive = new DriveService(init);
+        _docs = new DocsService(init);
     }
 
     /// <summary>
@@ -266,90 +270,169 @@ public class DriveFileService
     {
         try
         {
-            using var ms = new MemoryStream();
-
             if (docFile.MimeType == "application/vnd.google-apps.document")
-            {
-                await _drive.Files.Export(docFile.Id,
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                    .DownloadAsync(ms);
-            }
+                return await ReadGoogleDocAsync(docFile.Id);
             else
-            {
-                await _drive.Files.Get(docFile.Id).DownloadAsync(ms);
-            }
-
-            ms.Position = 0;
-            using var wordDoc = WordprocessingDocument.Open(ms, false);
-            var body = wordDoc.MainDocumentPart?.Document?.Body;
-            if (body == null)
-                return (null, "Документ пустой");
-
-            // Convert to HTML — handle both paragraphs and tables
-            var html = new System.Text.StringBuilder();
-            foreach (var child in body.ChildElements)
-            {
-                if (child is DocumentFormat.OpenXml.Wordprocessing.Paragraph para)
-                {
-                    var text = para.InnerText.Trim();
-                    if (string.IsNullOrWhiteSpace(text))
-                        continue;
-
-                    var isBold = para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
-                    if (isBold)
-                        html.AppendLine($"<h6>{Enc(text)}</h6>");
-                    else
-                        html.AppendLine($"<p>{Enc(text)}</p>");
-                }
-                else if (child is DocumentFormat.OpenXml.Wordprocessing.Table table)
-                {
-                    html.AppendLine("<table class='table table-sm table-bordered mb-3'>");
-                    bool firstRow = true;
-                    foreach (var row in table.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>())
-                    {
-                        html.AppendLine("<tr>");
-                        foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
-                        {
-                            var cellHtml = CellToHtml(cell);
-                            var isFirstCol = cell == row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>().First();
-                            if (firstRow)
-                                html.AppendLine($"<th>{cellHtml}</th>");
-                            else if (isFirstCol)
-                                html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{cellHtml}</td>");
-                            else
-                                html.AppendLine($"<td>{cellHtml}</td>");
-                        }
-                        html.AppendLine("</tr>");
-                        firstRow = false;
-                    }
-                    html.AppendLine("</table>");
-                }
-            }
-
-            return (html.ToString(), null);
-
-            static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
-
-            static string CellToHtml(DocumentFormat.OpenXml.Wordprocessing.TableCell cell)
-            {
-                var parts = new List<string>();
-                foreach (var p in cell.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
-                {
-                    var text = p.InnerText.Trim();
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        var isBold = p.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
-                        parts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
-                    }
-                }
-                return string.Join("<br/>", parts);
-            }
+                return await ReadWordDocAsync(docFile.Id);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to read doc {Name}", docFile.Name);
             return (null, $"Ошибка чтения файла: {ex.Message}");
         }
+    }
+
+    private async Task<(string? html, string? error)> ReadGoogleDocAsync(string docId)
+    {
+        var doc = await _docs.Documents.Get(docId).ExecuteAsync();
+        if (doc.Body?.Content == null)
+            return (null, "Документ пустой");
+
+        var html = new System.Text.StringBuilder();
+
+        foreach (var element in doc.Body.Content)
+        {
+            if (element.Paragraph != null)
+            {
+                var parts = new List<string>();
+                bool anyBold = false;
+                foreach (var pe in element.Paragraph.Elements ?? [])
+                {
+                    if (pe.TextRun == null) continue;
+                    var text = pe.TextRun.Content;
+                    if (string.IsNullOrWhiteSpace(text)) continue;
+                    var isBold = pe.TextRun.TextStyle?.Bold == true;
+                    if (isBold) anyBold = true;
+                    parts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
+                }
+                var content = string.Join("", parts).Trim();
+                if (string.IsNullOrWhiteSpace(content)) continue;
+
+                // Replace newlines with <br/>
+                content = content.Replace("\n", "<br/>");
+
+                if (anyBold && content.Length < 100)
+                    html.AppendLine($"<h6>{content}</h6>");
+                else
+                    html.AppendLine($"<p>{content}</p>");
+            }
+            else if (element.Table != null)
+            {
+                html.AppendLine("<table class='table table-sm table-bordered mb-3'>");
+                bool firstRow = true;
+                foreach (var row in element.Table.TableRows)
+                {
+                    html.AppendLine("<tr>");
+                    bool isFirstCol = true;
+                    foreach (var cell in row.TableCells)
+                    {
+                        var cellParts = new List<string>();
+                        foreach (var ce in cell.Content)
+                        {
+                            if (ce.Paragraph == null) continue;
+                            var paraTexts = new List<string>();
+                            foreach (var pe in ce.Paragraph.Elements ?? [])
+                            {
+                                if (pe.TextRun == null) continue;
+                                var text = pe.TextRun.Content?.TrimEnd('\n') ?? "";
+                                if (string.IsNullOrWhiteSpace(text)) continue;
+                                var isBold = pe.TextRun.TextStyle?.Bold == true;
+                                paraTexts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
+                            }
+                            var paraContent = string.Join("", paraTexts).Trim();
+                            if (!string.IsNullOrWhiteSpace(paraContent))
+                                cellParts.Add(paraContent);
+                        }
+                        var cellHtml = string.Join("<br/>", cellParts);
+
+                        if (firstRow)
+                            html.AppendLine($"<th>{cellHtml}</th>");
+                        else if (isFirstCol)
+                            html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{cellHtml}</td>");
+                        else
+                            html.AppendLine($"<td>{cellHtml}</td>");
+                        isFirstCol = false;
+                    }
+                    html.AppendLine("</tr>");
+                    firstRow = false;
+                }
+                html.AppendLine("</table>");
+            }
+        }
+
+        return (html.ToString(), null);
+    }
+
+    private async Task<(string? html, string? error)> ReadWordDocAsync(string fileId)
+    {
+        using var ms = new MemoryStream();
+        await _drive.Files.Get(fileId).DownloadAsync(ms);
+        ms.Position = 0;
+
+        using var wordDoc = WordprocessingDocument.Open(ms, false);
+        var body = wordDoc.MainDocumentPart?.Document?.Body;
+        if (body == null)
+            return (null, "Документ пустой");
+
+        var html = new System.Text.StringBuilder();
+        foreach (var child in body.ChildElements)
+        {
+            if (child is DocumentFormat.OpenXml.Wordprocessing.Paragraph para)
+            {
+                var text = para.InnerText.Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                var isBold = para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
+                if (isBold)
+                    html.AppendLine($"<h6>{Enc(text)}</h6>");
+                else
+                    html.AppendLine($"<p>{Enc(text)}</p>");
+            }
+            else if (child is DocumentFormat.OpenXml.Wordprocessing.Table table)
+            {
+                html.AppendLine("<table class='table table-sm table-bordered mb-3'>");
+                bool firstRow = true;
+                foreach (var row in table.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>())
+                {
+                    html.AppendLine("<tr>");
+                    bool isFirstCol = true;
+                    foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
+                    {
+                        var cellHtml = WordCellToHtml(cell);
+                        if (firstRow)
+                            html.AppendLine($"<th>{cellHtml}</th>");
+                        else if (isFirstCol)
+                            html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{cellHtml}</td>");
+                        else
+                            html.AppendLine($"<td>{cellHtml}</td>");
+                        isFirstCol = false;
+                    }
+                    html.AppendLine("</tr>");
+                    firstRow = false;
+                }
+                html.AppendLine("</table>");
+            }
+        }
+
+        return (html.ToString(), null);
+    }
+
+    private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
+
+    private static string WordCellToHtml(DocumentFormat.OpenXml.Wordprocessing.TableCell cell)
+    {
+        var parts = new List<string>();
+        foreach (var p in cell.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+        {
+            var text = p.InnerText.Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                var isBold = p.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
+                parts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
+            }
+        }
+        return string.Join("<br/>", parts);
     }
 }
 
