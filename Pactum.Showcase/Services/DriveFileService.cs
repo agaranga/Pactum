@@ -11,7 +11,7 @@ public class DriveFileService
     private readonly string _rootFolderId;
     private readonly ILogger<DriveFileService> _logger;
 
-    // Cache: city -> (folderId)
+    // city -> folderId from config
     private readonly Dictionary<string, string> _cityFolderIds = new(StringComparer.OrdinalIgnoreCase);
     // Cache: externalId -> folderId
     private readonly Dictionary<string, string> _bizFolderIds = new(StringComparer.OrdinalIgnoreCase);
@@ -21,6 +21,14 @@ public class DriveFileService
     {
         _logger = logger;
         _rootFolderId = config["GoogleDrive:RootFolderId"] ?? "1YOTXieCwwv6NXDJtmZC4jIYFXWql-wIu";
+
+        // Load city folder IDs from config
+        var cityFolders = config.GetSection("GoogleDrive:CityFolders");
+        foreach (var child in cityFolders.GetChildren())
+        {
+            if (!string.IsNullOrWhiteSpace(child.Value))
+                _cityFolderIds[child.Key] = child.Value;
+        }
 
         var credPath = config["GoogleSheets:CredentialsPath"];
         var credJson = config["GoogleSheets:CredentialsJson"];
