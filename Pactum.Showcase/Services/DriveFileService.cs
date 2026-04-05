@@ -310,13 +310,14 @@ public class DriveFileService
                         html.AppendLine("<tr>");
                         foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
                         {
-                            var cellText = cell.InnerText.Trim();
-                            var tag = firstRow ? "th" : "td";
-                            // First column in non-header rows as label
-                            if (!firstRow && cell == row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>().First())
-                                html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{Enc(cellText)}</td>");
+                            var cellHtml = CellToHtml(cell);
+                            var isFirstCol = cell == row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>().First();
+                            if (firstRow)
+                                html.AppendLine($"<th>{cellHtml}</th>");
+                            else if (isFirstCol)
+                                html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{cellHtml}</td>");
                             else
-                                html.AppendLine($"<{tag} style='white-space:pre-wrap'>{Enc(cellText)}</{tag}>");
+                                html.AppendLine($"<td>{cellHtml}</td>");
                         }
                         html.AppendLine("</tr>");
                         firstRow = false;
@@ -328,6 +329,21 @@ public class DriveFileService
             return (html.ToString(), null);
 
             static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
+
+            static string CellToHtml(DocumentFormat.OpenXml.Wordprocessing.TableCell cell)
+            {
+                var parts = new List<string>();
+                foreach (var p in cell.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+                {
+                    var text = p.InnerText.Trim();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        var isBold = p.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
+                        parts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
+                    }
+                }
+                return string.Join("<br/>", parts);
+            }
         }
         catch (Exception ex)
         {
