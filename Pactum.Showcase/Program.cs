@@ -92,16 +92,24 @@ app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
     ctx.Response.Redirect("/login");
 });
 
-app.MapGet("/api/auth/google", (HttpContext ctx, GoogleOAuthService oauth) =>
+app.MapGet("/api/auth/google", (HttpContext ctx, GoogleOAuthService oauth, IConfiguration config) =>
 {
-    var host = ctx.Request.Host;
-    var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
-    var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
+    var baseUrl = config["App:BaseUrl"];
+    string redirectUri;
+    if (!string.IsNullOrWhiteSpace(baseUrl))
+    {
+        redirectUri = $"{baseUrl.TrimEnd('/')}/api/auth/google-callback";
+    }
+    else
+    {
+        var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
+        redirectUri = $"{scheme}://{ctx.Request.Host}/api/auth/google-callback";
+    }
     var url = oauth.GetAuthorizationUrl(redirectUri);
     ctx.Response.Redirect(url);
 }).RequireAuthorization();
 
-app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthService oauth) =>
+app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthService oauth, IConfiguration config) =>
 {
     var code = ctx.Request.Query["code"].ToString();
     if (string.IsNullOrWhiteSpace(code))
@@ -110,9 +118,17 @@ app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthServi
         return;
     }
 
-    var host = ctx.Request.Host;
-    var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
-    var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
+    var baseUrl = config["App:BaseUrl"];
+    string redirectUri;
+    if (!string.IsNullOrWhiteSpace(baseUrl))
+    {
+        redirectUri = $"{baseUrl.TrimEnd('/')}/api/auth/google-callback";
+    }
+    else
+    {
+        var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
+        redirectUri = $"{scheme}://{ctx.Request.Host}/api/auth/google-callback";
+    }
 
     var success = await oauth.ExchangeCodeAsync(code, redirectUri);
     ctx.Response.Redirect(success ? "/admin?google=ok" : "/admin?google=error");
