@@ -299,7 +299,7 @@ public class DriveFileService
                 foreach (var pe in element.Paragraph.Elements ?? [])
                 {
                     if (pe.TextRun == null) continue;
-                    var text = pe.TextRun.Content;
+                    var text = pe.TextRun.Content?.Replace("\v", "\n").Replace("\x0B", "\n");
                     if (string.IsNullOrWhiteSpace(text)) continue;
                     var isBold = pe.TextRun.TextStyle?.Bold == true;
                     if (isBold) anyBold = true;
@@ -334,10 +334,13 @@ public class DriveFileService
                             foreach (var pe in ce.Paragraph.Elements ?? [])
                             {
                                 if (pe.TextRun == null) continue;
-                                var text = pe.TextRun.Content?.TrimEnd('\n') ?? "";
+                                var text = pe.TextRun.Content?.TrimEnd('\n')
+                                    .Replace("\v", "\n").Replace("\x0B", "\n") ?? "";
                                 if (string.IsNullOrWhiteSpace(text)) continue;
                                 var isBold = pe.TextRun.TextStyle?.Bold == true;
-                                paraTexts.Add(isBold ? $"<strong>{Enc(text)}</strong>" : Enc(text));
+                                paraTexts.Add(isBold
+                                    ? $"<strong>{Enc(text).Replace("\n", "<br/>")}</strong>"
+                                    : Enc(text).Replace("\n", "<br/>"));
                             }
                             var paraContent = string.Join("", paraTexts).Trim();
                             if (!string.IsNullOrWhiteSpace(paraContent))
