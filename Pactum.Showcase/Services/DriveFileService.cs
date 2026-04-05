@@ -43,7 +43,7 @@ public class DriveFileService
         else
             throw new InvalidOperationException("Google credentials not configured");
 
-        credential = credential.CreateScoped(DriveService.Scope.DriveReadonly, DocsService.Scope.DocumentsReadonly);
+        credential = credential.CreateScoped(DriveService.Scope.Drive, DocsService.Scope.DocumentsReadonly);
         var init = new BaseClientService.Initializer { HttpClientInitializer = credential };
         _drive = new DriveService(init);
         _docs = new DocsService(init);
@@ -423,6 +423,107 @@ public class DriveFileService
         }
 
         return (html.ToString(), null);
+    }
+
+    /// <summary>
+    /// Save generated card text as a docx file in the business folder on Drive.
+    /// </summary>
+    public async Task<(bool success, string? error)> SaveCardDocxAsync(string externalId, string markdownText)
+    {
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null)
+            return (false, "Папка не найдена на Google Drive");
+
+        var fileName = $"{externalId}_card.docx";
+
+        // Create docx in memory
+        using var ms = new MemoryStream();
+        using (var wordDoc = WordprocessingDocument.Create(ms, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var mainPart = wordDoc.AddMainDocumentPart();
+            mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+            var body = mainPart.Document.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Body());
+
+            // Parse markdown-like text into paragraphs
+            var lines = markdownText.Split('\n');
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed))
+                    continue;
+
+                var para = new DocumentFormat.OpenXml.Wordprocessing.Paragraph();
+                var run = new DocumentFormat.OpenXml.Wordprocessing.Run();
+
+                // Handle bold (**text**)
+                if (trimmed.StartsWith("**") && trimmed.EndsWith("**"))
+                {
+                    var boldText = trimmed[2..^2];
+                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
+                        new DocumentFormat.OpenXml.Wordprocessing.Bold()));
+                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(boldText) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+                }
+                else if (trimmed.Contains("**"))
+                {
+                    // Mixed bold — split into runs
+                    var parts = trimmed.Split("**");
+                    bool isBold = false;
+                    for (int k = 0; k < parts.Length; k++)
+                    {
+                        if (!string.IsNullOrEmpty(parts[k]))
+                        {
+                            var r = new DocumentFormat.OpenXml.Wordprocessing.Run();
+                            if (isBold)
+                                r.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
+                                    new DocumentFormat.OpenXml.Wordprocessing.Bold()));
+                            r.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(parts[k]) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+                            para.AppendChild(r);
+                        }
+                        isBold = !isBold;
+                    }
+                    body.AppendChild(para);
+                    continue;
+                }
+                else
+                {
+                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(trimmed) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+                }
+
+                para.AppendChild(run);
+                body.AppendChild(para);
+            }
+        }
+
+        ms.Position = 0;
+
+        // Delete existing card file if present
+        var existingReq = _drive.Files.List();
+        existingReq.Q = $"'{folderId}' in parents and name = '{fileName}'";
+        existingReq.Fields = "files(id)";
+        var existing = await existingReq.ExecuteAsync();
+        foreach (var old in existing.Files)
+            await _drive.Files.Delete(old.Id).ExecuteAsync();
+
+        // Upload new file
+        var fileMetadata = new Google.Apis.Drive.v3.Data.File
+        {
+            Name = fileName,
+            Parents = [folderId],
+            MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        };
+
+        var upload = _drive.Files.Create(fileMetadata, ms,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        upload.Fields = "id";
+        var result = await upload.UploadAsync();
+
+        if (result.Status == Google.Apis.Upload.UploadStatus.Completed)
+        {
+            _logger.LogInformation("Card saved: {FileName} in folder {FolderId}", fileName, folderId);
+            return (true, null);
+        }
+
+        return (false, $"Upload failed: {result.Exception?.Message}");
     }
 
     private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);

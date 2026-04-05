@@ -33,6 +33,7 @@ builder.Services.AddSingleton<GoogleSheetsApiService>();
 builder.Services.AddSingleton<DataService>();
 builder.Services.AddSingleton<DriveFileService>();
 builder.Services.AddSingleton<DescriptionService>();
+builder.Services.AddSingleton<CardGenerationService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 
 var app = builder.Build();

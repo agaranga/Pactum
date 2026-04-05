@@ -3,6 +3,8 @@
 @using Pactum.Showcase.Services
 @attribute [Authorize(Roles = "Admin")]
 @inject DataService DataService
+@inject DriveFileService DriveService
+@inject CardGenerationService CardService
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Администрирование</PageTitle>
@@ -173,10 +175,37 @@
         _cardGenProgress = "";
         try
         {
-            // TODO: implement with Claude API
-            await Task.Delay(500);
-            _message = "Генерация карточек пока не реализована. Будет добавлена позже.";
-            _isError = false;
+            var all = await DataService.GetAllAsync();
+            var withId = all.Where(b => !string.IsNullOrWhiteSpace(b.ExternalId)).ToList();
+
+            int generated = 0, skipped = 0, failed = 0;
+
+            for (int i = 0; i < withId.Count; i++)
+            {
+                var biz = withId[i];
+                _cardGenProgress = $"({i + 1}/{withId.Count}) {biz.Name}";
+                StateHasChanged();
+
+                // Check if card already exists (skip if mode = missing)
+                if (_cardGenMode == "missing")
+                {
+                    var info = await DriveService.CheckFilesAsync(biz.ExternalId!);
+                    if (info.HasCardDoc)
+                    {
+                        skipped++;
+                        continue;
+                    }
+                }
+
+                var (success, msg) = await CardService.GenerateCardAsync(biz.ExternalId!);
+                if (success)
+                    generated++;
+                else
+                    failed++;
+            }
+
+            _message = $"Готово. Сгенерировано: {generated}, пропущено: {skipped}, ошибок: {failed}";
+            _isError = failed > 0;
         }
         catch (Exception ex)
         {
@@ -187,6 +216,7 @@
         {
             _busy = false;
             _currentOp = null;
+            _cardGenProgress = "";
         }
     }
 

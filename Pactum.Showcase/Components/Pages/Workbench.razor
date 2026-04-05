@@ -6,6 +6,7 @@
 @attribute [Authorize]
 @inject DataService DataService
 @inject DriveFileService DriveService
+@inject CardGenerationService CardService
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Рабочий стол</PageTitle>
@@ -341,12 +342,31 @@
 
     private async Task GenerateCard()
     {
-        // TODO: will be implemented with Claude API prompt
+        if (_selected == null || string.IsNullOrWhiteSpace(_selected.ExternalId))
+            return;
+
         _cardGenerating = true;
+        _cardDocError = null;
+        _cardDocHtml = null;
         StateHasChanged();
-        await Task.Delay(500); // placeholder
+
+        var (success, message) = await CardService.GenerateCardAsync(_selected.ExternalId);
+
+        if (success)
+        {
+            // Reload card content
+            _cardDocLoadedForId = null;
+            var (html, error) = await DriveService.ReadCardDocAsync(_selected.ExternalId);
+            _cardDocHtml = html;
+            _cardDocError = error;
+            _cardDocLoadedForId = _selected.ExternalId;
+        }
+        else
+        {
+            _cardDocError = message;
+        }
+
         _cardGenerating = false;
-        _cardDocError = "Генерация карточек пока не реализована. Будет добавлена позже.";
     }
 
     private RenderFragment RenderDataTab() => __builder =>
