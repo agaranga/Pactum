@@ -99,7 +99,7 @@ app.MapGet("/api/auth/google", (HttpContext ctx, GoogleOAuthService oauth) =>
     var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
     var url = oauth.GetAuthorizationUrl(redirectUri);
     ctx.Response.Redirect(url);
-}).RequireAuthorization("Admin");
+}).RequireAuthorization();
 
 app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthService oauth) =>
 {
