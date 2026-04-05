@@ -285,26 +285,49 @@ public class DriveFileService
             if (body == null)
                 return (null, "Документ пустой");
 
-            // Convert to simple HTML
+            // Convert to HTML — handle both paragraphs and tables
             var html = new System.Text.StringBuilder();
-            foreach (var para in body.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+            foreach (var child in body.ChildElements)
             {
-                var text = para.InnerText.Trim();
-                if (string.IsNullOrWhiteSpace(text))
+                if (child is DocumentFormat.OpenXml.Wordprocessing.Paragraph para)
                 {
-                    html.AppendLine("<br/>");
-                    continue;
-                }
+                    var text = para.InnerText.Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                        continue;
 
-                // Check if bold (heading-like)
-                var isBold = para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
-                if (isBold)
-                    html.AppendLine($"<p><strong>{System.Net.WebUtility.HtmlEncode(text)}</strong></p>");
-                else
-                    html.AppendLine($"<p>{System.Net.WebUtility.HtmlEncode(text)}</p>");
+                    var isBold = para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Bold>().Any();
+                    if (isBold)
+                        html.AppendLine($"<h6>{Enc(text)}</h6>");
+                    else
+                        html.AppendLine($"<p>{Enc(text)}</p>");
+                }
+                else if (child is DocumentFormat.OpenXml.Wordprocessing.Table table)
+                {
+                    html.AppendLine("<table class='table table-sm table-bordered mb-3'>");
+                    bool firstRow = true;
+                    foreach (var row in table.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>())
+                    {
+                        html.AppendLine("<tr>");
+                        foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
+                        {
+                            var cellText = cell.InnerText.Trim();
+                            var tag = firstRow ? "th" : "td";
+                            // First column in non-header rows as label
+                            if (!firstRow && cell == row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>().First())
+                                html.AppendLine($"<td class='text-muted fw-semibold' style='width:35%'>{Enc(cellText)}</td>");
+                            else
+                                html.AppendLine($"<{tag} style='white-space:pre-wrap'>{Enc(cellText)}</{tag}>");
+                        }
+                        html.AppendLine("</tr>");
+                        firstRow = false;
+                    }
+                    html.AppendLine("</table>");
+                }
             }
 
             return (html.ToString(), null);
+
+            static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
         }
         catch (Exception ex)
         {
