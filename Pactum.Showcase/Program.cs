@@ -33,6 +33,7 @@ builder.Services.AddSingleton<GoogleSheetsApiService>();
 builder.Services.AddSingleton<DataService>();
 builder.Services.AddSingleton<DriveFileService>();
 builder.Services.AddSingleton<DescriptionService>();
+builder.Services.AddSingleton<GoogleOAuthService>();
 builder.Services.AddSingleton<CardGenerationService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 
@@ -89,6 +90,32 @@ app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
 {
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     ctx.Response.Redirect("/login");
+});
+
+app.MapGet("/api/auth/google", (HttpContext ctx, GoogleOAuthService oauth) =>
+{
+    var scheme = ctx.Request.Scheme;
+    var host = ctx.Request.Host;
+    var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
+    var url = oauth.GetAuthorizationUrl(redirectUri);
+    ctx.Response.Redirect(url);
+}).RequireAuthorization("Admin");
+
+app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthService oauth) =>
+{
+    var code = ctx.Request.Query["code"].ToString();
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        ctx.Response.Redirect("/admin?google=error");
+        return;
+    }
+
+    var scheme = ctx.Request.Scheme;
+    var host = ctx.Request.Host;
+    var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
+
+    var success = await oauth.ExchangeCodeAsync(code, redirectUri);
+    ctx.Response.Redirect(success ? "/admin?google=ok" : "/admin?google=error");
 });
 
 app.MapGet("/api/images/{fileId}", async (string fileId, DriveFileService driveService) =>

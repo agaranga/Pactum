@@ -5,6 +5,8 @@
 @inject DataService DataService
 @inject DriveFileService DriveService
 @inject CardGenerationService CardService
+@inject GoogleOAuthService GoogleOAuth
+@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Администрирование</PageTitle>
@@ -60,6 +62,32 @@
         </div>
     </div>
 
+    <!-- Google Drive connection -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Google Drive</strong>
+        </div>
+        <div class="card-body">
+            @if (GoogleOAuth.IsAuthorized)
+            {
+                <span class="text-success">Подключен</span>
+            }
+            else
+            {
+                <p class="text-muted">Для создания файлов на Google Drive необходимо подключить аккаунт.</p>
+                <a href="/api/auth/google" class="btn btn-outline-primary">Подключить Google Drive</a>
+            }
+            @if (_googleStatus == "ok")
+            {
+                <div class="alert alert-success mt-2 mb-0">Google Drive успешно подключен!</div>
+            }
+            else if (_googleStatus == "error")
+            {
+                <div class="alert alert-danger mt-2 mb-0">Ошибка подключения Google Drive</div>
+            }
+        </div>
+    </div>
+
     <!-- Card generation -->
     <div class="card mb-4">
         <div class="card-header">
@@ -108,12 +136,17 @@
     private bool _initialized;
     private string _cardGenMode = "missing";
     private string _cardGenProgress = "";
+    private string? _googleStatus;
+
+    [SupplyParameterFromQuery(Name = "google")]
+    public string? GoogleStatus { get; set; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && !_initialized)
         {
             _initialized = true;
+            _googleStatus = GoogleStatus;
             _count = await DataService.GetCountAsync();
             StateHasChanged();
         }

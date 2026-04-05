@@ -10,6 +10,7 @@ public class DriveFileService
 {
     private readonly DriveService _drive;
     private readonly DocsService _docs;
+    private readonly GoogleOAuthService _oauth;
     private readonly string _rootFolderId;
     private readonly ILogger<DriveFileService> _logger;
 
@@ -19,9 +20,10 @@ public class DriveFileService
     private readonly Dictionary<string, string> _bizFolderIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    public DriveFileService(IConfiguration config, ILogger<DriveFileService> logger)
+    public DriveFileService(IConfiguration config, ILogger<DriveFileService> logger, GoogleOAuthService oauth)
     {
         _logger = logger;
+        _oauth = oauth;
         _rootFolderId = config["GoogleDrive:RootFolderId"] ?? "1WHH6FCHPNyn09OZAW1Y9wL-Rdn2OrofO";
 
         // Load city folder IDs from config
@@ -430,28 +432,37 @@ public class DriveFileService
     /// </summary>
     public async Task<(bool success, string? error)> SaveCardDocxAsync(string externalId, string markdownText)
     {
+        // Use OAuth for writing (service account has no storage quota)
+        var oauthDrive = await _oauth.GetDriveServiceAsync();
+        var oauthDocs = await _oauth.GetDocsServiceAsync();
+        if (oauthDrive == null || oauthDocs == null)
+            return (false, "Google OAuth не настроен. Перейдите в Админ → Подключить Google Drive.");
+
         var folderId = await FindBizFolderAsync(externalId);
         if (folderId == null)
             return (false, "Папка не найдена на Google Drive");
 
         var fileName = $"{externalId}_card";
 
-        // Delete existing card file if present
+        // Delete existing card file if present (use service account for listing, oauth for deleting)
         var existingReq = _drive.Files.List();
         existingReq.Q = $"'{folderId}' in parents and (name contains '{externalId}_card')";
         existingReq.Fields = "files(id, name)";
         var existing = await existingReq.ExecuteAsync();
         foreach (var old in existing.Files)
-            await _drive.Files.Delete(old.Id).ExecuteAsync();
+        {
+            try { await oauthDrive.Files.Delete(old.Id).ExecuteAsync(); }
+            catch { /* may not have permission, ignore */ }
+        }
 
-        // Create empty Google Doc in the folder
+        // Create empty Google Doc in the folder via OAuth
         var fileMetadata = new Google.Apis.Drive.v3.Data.File
         {
             Name = fileName,
             Parents = [folderId],
             MimeType = "application/vnd.google-apps.document"
         };
-        var created = await _drive.Files.Create(fileMetadata).ExecuteAsync();
+        var created = await oauthDrive.Files.Create(fileMetadata).ExecuteAsync();
         var docId = created.Id;
 
         // Build Docs API requests to populate the document
@@ -520,7 +531,7 @@ public class DriveFileService
         if (requests.Count > 0)
         {
             var batchUpdate = new Google.Apis.Docs.v1.Data.BatchUpdateDocumentRequest { Requests = requests };
-            await _docs.Documents.BatchUpdate(batchUpdate, docId).ExecuteAsync();
+            await oauthDocs.Documents.BatchUpdate(batchUpdate, docId).ExecuteAsync();
         }
 
         _logger.LogInformation("Card saved as Google Doc: {FileName} in folder {FolderId}", fileName, folderId);
