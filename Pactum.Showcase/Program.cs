@@ -94,8 +94,8 @@ app.MapGet("/api/auth/logout", async (HttpContext ctx) =>
 
 app.MapGet("/api/auth/google", (HttpContext ctx, GoogleOAuthService oauth) =>
 {
-    var scheme = ctx.Request.Scheme;
     var host = ctx.Request.Host;
+    var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
     var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
     var url = oauth.GetAuthorizationUrl(redirectUri);
     ctx.Response.Redirect(url);
@@ -110,8 +110,8 @@ app.MapGet("/api/auth/google-callback", async (HttpContext ctx, GoogleOAuthServi
         return;
     }
 
-    var scheme = ctx.Request.Scheme;
     var host = ctx.Request.Host;
+    var scheme = ctx.Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? ctx.Request.Scheme;
     var redirectUri = $"{scheme}://{host}/api/auth/google-callback";
 
     var success = await oauth.ExchangeCodeAsync(code, redirectUri);
