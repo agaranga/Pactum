@@ -14,7 +14,7 @@
     <!-- Left: list (30%) -->
     <div class="border-end d-flex flex-column" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
         <!-- Toolbar -->
-        <div class="p-2 border-bottom bg-light">
+        <div class="p-2 border-bottom bg-light" style="flex-shrink: 0;">
             <input type="text" class="form-control form-control-sm mb-1" placeholder="Поиск по названию..."
                    @bind="_searchText" @bind:event="oninput" />
             <div class="d-flex gap-1">
@@ -102,16 +102,17 @@
     </div>
 
     <!-- Right: detail panel with tabs (70%) -->
-    <div class="flex-grow-1 overflow-auto">
+    <div class="flex-grow-1 d-flex flex-column">
         @if (_selected == null)
         {
-            <div class="d-flex justify-content-center align-items-center h-100 text-muted">
+            <div class="d-flex justify-content-center align-items-center flex-grow-1 text-muted">
                 <h5>Выберите бизнес из списка</h5>
             </div>
         }
         else
         {
-            <div class="p-3">
+            <!-- Fixed header + tabs -->
+            <div class="px-3 pt-3" style="flex-shrink: 0;">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">@_selected.Name</h5>
                     @if (!string.IsNullOrWhiteSpace(_selected.ExternalId))
@@ -120,7 +121,6 @@
                     }
                 </div>
 
-                <!-- Tabs -->
                 <ul class="nav nav-tabs">
                     <li class="nav-item">
                         <button class="nav-link @(_activeTab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">Данные</button>
@@ -131,38 +131,43 @@
                     </li>
                     <li class="nav-item">
                         <button class="nav-link @(_activeTab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)"
-                                disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Описание</button>
+                                disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Карточка</button>
                     </li>
                     <li class="nav-item">
                         <button class="nav-link @(_activeTab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)"
                                 disabled="@(string.IsNullOrWhiteSpace(_selected.ExternalId))">Картинки</button>
                     </li>
                 </ul>
+            </div>
 
-                <div class="tab-content pt-3">
-                    @if (_activeTab == 0)
-                    {
-                        @RenderDataTab()
-                    }
-                    else if (_activeTab == 1)
-                    {
-                        @RenderDocTab(_mainDocHtml, _mainDocError, _mainDocLoading, "описания")
-                    }
-                    else if (_activeTab == 2)
-                    {
-                        @RenderDocTab(_cardDocHtml, _cardDocError, _cardDocLoading, "карточки")
-                    }
-                    else if (_activeTab == 3)
-                    {
-                        @RenderImagesTab()
-                    }
-                </div>
+            <!-- Scrollable tab content -->
+            <div class="overflow-auto flex-grow-1 p-3">
+                @if (_activeTab == 0)
+                {
+                    @RenderDataTab()
+                }
+                else if (_activeTab == 1)
+                {
+                    @RenderDocTab(_mainDocHtml, _mainDocError, _mainDocLoading, "схемы")
+                }
+                else if (_activeTab == 2)
+                {
+                    @RenderCardTab()
+                }
+                else if (_activeTab == 3)
+                {
+                    @RenderImagesTab()
+                }
             </div>
         }
     </div>
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
     private List<BusinessEntity>? _allBusinesses;
     private BusinessEntity? _selected;
     private int _activeTab;
@@ -179,7 +184,7 @@
     // File info cache
     private readonly Dictionary<string, FilePresenceInfo> _fileInfoCache = new();
 
-    // Tab 1: main doc
+    // Tab 1: main doc (schema)
     private string? _mainDocHtml;
     private string? _mainDocError;
     private bool _mainDocLoading;
@@ -189,6 +194,7 @@
     private string? _cardDocHtml;
     private string? _cardDocError;
     private bool _cardDocLoading;
+    private bool _cardGenerating;
     private string? _cardDocLoadedForId;
 
     // Tab 3: images
@@ -232,6 +238,11 @@
         if (firstRender && !_initialized)
         {
             _initialized = true;
+            if (AuthState != null)
+            {
+                var state = await AuthState;
+                _isAdmin = state.User.IsInRole("Admin");
+            }
             _allBusinesses = await DataService.GetAllAsync();
 
             _cities = _allBusinesses
@@ -248,9 +259,7 @@
                 .OrderBy(a => a)
                 .ToList();
 
-            // Load file presence info in background for items with ExternalId
             _ = LoadFileInfoAsync();
-
             StateHasChanged();
         }
     }
@@ -269,19 +278,17 @@
                 _fileInfoCache[biz.ExternalId!] = info;
                 await InvokeAsync(StateHasChanged);
             }
-            catch { /* ignore */ }
+            catch { }
         }
     }
 
     private async Task SelectBusiness(BusinessEntity biz)
     {
         _selected = biz;
-        // Keep current tab, reset loaded data for new business
         _mainDocLoadedForId = null;
         _cardDocLoadedForId = null;
         _imagesLoadedForId = null;
 
-        // If on a non-data tab, load content for that tab
         if (_activeTab > 0)
             await SwitchTab(_activeTab);
     }
@@ -332,6 +339,16 @@
         }
     }
 
+    private async Task GenerateCard()
+    {
+        // TODO: will be implemented with Claude API prompt
+        _cardGenerating = true;
+        StateHasChanged();
+        await Task.Delay(500); // placeholder
+        _cardGenerating = false;
+        _cardDocError = "Генерация карточек пока не реализована. Будет добавлена позже.";
+    }
+
     private RenderFragment RenderDataTab() => __builder =>
     {
         <div class="card">
@@ -367,6 +384,47 @@
             <div class="card">
                 <div class="card-body doc-content">
                     @((MarkupString)html)
+                </div>
+            </div>
+        }
+    };
+
+    private RenderFragment RenderCardTab() => __builder =>
+    {
+        @if (_isAdmin)
+        {
+            <div class="mb-3">
+                <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
+                        disabled="@(_cardGenerating || _cardDocLoading)">
+                    @if (_cardGenerating)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Генерация...</span>
+                    }
+                    else
+                    {
+                        <span>Сгенерировать карточку</span>
+                    }
+                </button>
+            </div>
+        }
+
+        @if (_cardDocLoading)
+        {
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary"></div>
+                <p class="mt-2 text-muted">Загрузка карточки...</p>
+            </div>
+        }
+        else if (_cardDocError != null)
+        {
+            <div class="alert alert-warning">@((MarkupString)_cardDocError)</div>
+        }
+        else if (_cardDocHtml != null)
+        {
+            <div class="card">
+                <div class="card-body doc-content">
+                    @((MarkupString)_cardDocHtml)
                 </div>
             </div>
         }

@@ -174,7 +174,10 @@ public class DriveFileService
         req.Fields = "files(id, name, mimeType)";
         var files = await req.ExecuteAsync();
 
+        // Look for ID_card.docx or legacy ID_карточка
         var cardDoc = files.Files.FirstOrDefault(f =>
+            f.Name.Contains("_card", StringComparison.OrdinalIgnoreCase))
+            ?? files.Files.FirstOrDefault(f =>
             f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase));
 
         if (cardDoc == null)
@@ -256,7 +259,8 @@ public class DriveFileService
                 info.MainDocType = f.MimeType == "application/vnd.google-apps.document" ? "Google Doc" : "Word";
             }
 
-            if (isDoc && f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase))
+            if (isDoc && (f.Name.Contains("_card", StringComparison.OrdinalIgnoreCase)
+                || f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase)))
                 info.HasCardDoc = true;
 
             if (f.MimeType?.StartsWith("image/") == true)

@@ -18,6 +18,7 @@
         </div>
     }
 
+    <!-- Database -->
     <div class="card mb-4">
         <div class="card-header">
             <strong>База данных</strong>
@@ -56,6 +57,43 @@
             }
         </div>
     </div>
+
+    <!-- Card generation -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Генерация карточек</strong>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="cardGenMode" id="modeMissing"
+                           checked="@(_cardGenMode == "missing")" @onchange="SetModeMissing" />
+                    <label class="form-check-label" for="modeMissing">
+                        Недостающие — генерировать только где нет карточки
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="cardGenMode" id="modeAll"
+                           checked="@(_cardGenMode == "all")" @onchange="SetModeAll" />
+                    <label class="form-check-label" for="modeAll">
+                        Все — перегенерировать все карточки заново
+                    </label>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" @onclick="GenerateCards" disabled="@_busy">
+                @if (_busy && _currentOp == "cards")
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                    <span>Генерация @_cardGenProgress...</span>
+                }
+                else
+                {
+                    <span>Сгенерировать карточки</span>
+                }
+            </button>
+        </div>
+    </div>
 </div>
 
 @code {
@@ -66,6 +104,8 @@
     private bool _showClearConfirm;
     private int _count;
     private bool _initialized;
+    private string _cardGenMode = "missing";
+    private string _cardGenProgress = "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -125,8 +165,32 @@
         }
     }
 
-    private void ShowClearConfirm()
+    private async Task GenerateCards()
     {
-        _showClearConfirm = true;
+        _busy = true;
+        _currentOp = "cards";
+        _message = null;
+        _cardGenProgress = "";
+        try
+        {
+            // TODO: implement with Claude API
+            await Task.Delay(500);
+            _message = "Генерация карточек пока не реализована. Будет добавлена позже.";
+            _isError = false;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Ошибка: {ex.Message}";
+            _isError = true;
+        }
+        finally
+        {
+            _busy = false;
+            _currentOp = null;
+        }
     }
+
+    private void ShowClearConfirm() => _showClearConfirm = true;
+    private void SetModeMissing() => _cardGenMode = "missing";
+    private void SetModeAll() => _cardGenMode = "all";
 }
