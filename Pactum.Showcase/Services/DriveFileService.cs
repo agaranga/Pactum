@@ -147,7 +147,8 @@ public class DriveFileService
 
         var mainDoc = docFiles.FirstOrDefault(f =>
             f.Name.StartsWith(externalId, StringComparison.OrdinalIgnoreCase)
-            && !f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase));
+            && !f.Name.Contains("карточка", StringComparison.OrdinalIgnoreCase)
+            && !f.Name.Contains("_card", StringComparison.OrdinalIgnoreCase));
 
         diag.AppendLine($"Main doc match: {mainDoc?.Name ?? "NOT FOUND"}<br/>");
         diag.AppendLine("</small>");
