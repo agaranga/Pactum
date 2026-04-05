@@ -43,7 +43,7 @@ public class DriveFileService
         else
             throw new InvalidOperationException("Google credentials not configured");
 
-        credential = credential.CreateScoped(DriveService.Scope.Drive, DocsService.Scope.DocumentsReadonly);
+        credential = credential.CreateScoped(DriveService.Scope.Drive, DocsService.Scope.Documents);
         var init = new BaseClientService.Initializer { HttpClientInitializer = credential };
         _drive = new DriveService(init);
         _docs = new DocsService(init);
@@ -426,7 +426,7 @@ public class DriveFileService
     }
 
     /// <summary>
-    /// Save generated card text as a docx file in the business folder on Drive.
+    /// Save generated card as a Google Doc in the business folder on Drive.
     /// </summary>
     public async Task<(bool success, string? error)> SaveCardDocxAsync(string externalId, string markdownText)
     {
@@ -434,96 +434,111 @@ public class DriveFileService
         if (folderId == null)
             return (false, "Папка не найдена на Google Drive");
 
-        var fileName = $"{externalId}_card.docx";
-
-        // Create docx in memory
-        using var ms = new MemoryStream();
-        using (var wordDoc = WordprocessingDocument.Create(ms, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
-        {
-            var mainPart = wordDoc.AddMainDocumentPart();
-            mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
-            var body = mainPart.Document.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Body());
-
-            // Parse markdown-like text into paragraphs
-            var lines = markdownText.Split('\n');
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (string.IsNullOrWhiteSpace(trimmed))
-                    continue;
-
-                var para = new DocumentFormat.OpenXml.Wordprocessing.Paragraph();
-                var run = new DocumentFormat.OpenXml.Wordprocessing.Run();
-
-                // Handle bold (**text**)
-                if (trimmed.StartsWith("**") && trimmed.EndsWith("**"))
-                {
-                    var boldText = trimmed[2..^2];
-                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
-                        new DocumentFormat.OpenXml.Wordprocessing.Bold()));
-                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(boldText) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
-                }
-                else if (trimmed.Contains("**"))
-                {
-                    // Mixed bold — split into runs
-                    var parts = trimmed.Split("**");
-                    bool isBold = false;
-                    for (int k = 0; k < parts.Length; k++)
-                    {
-                        if (!string.IsNullOrEmpty(parts[k]))
-                        {
-                            var r = new DocumentFormat.OpenXml.Wordprocessing.Run();
-                            if (isBold)
-                                r.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
-                                    new DocumentFormat.OpenXml.Wordprocessing.Bold()));
-                            r.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(parts[k]) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
-                            para.AppendChild(r);
-                        }
-                        isBold = !isBold;
-                    }
-                    body.AppendChild(para);
-                    continue;
-                }
-                else
-                {
-                    run.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Text(trimmed) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
-                }
-
-                para.AppendChild(run);
-                body.AppendChild(para);
-            }
-        }
-
-        ms.Position = 0;
+        var fileName = $"{externalId}_card";
 
         // Delete existing card file if present
         var existingReq = _drive.Files.List();
-        existingReq.Q = $"'{folderId}' in parents and name = '{fileName}'";
-        existingReq.Fields = "files(id)";
+        existingReq.Q = $"'{folderId}' in parents and (name contains '{externalId}_card')";
+        existingReq.Fields = "files(id, name)";
         var existing = await existingReq.ExecuteAsync();
         foreach (var old in existing.Files)
             await _drive.Files.Delete(old.Id).ExecuteAsync();
 
-        // Upload new file
+        // Create empty Google Doc in the folder
         var fileMetadata = new Google.Apis.Drive.v3.Data.File
         {
             Name = fileName,
             Parents = [folderId],
-            MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            MimeType = "application/vnd.google-apps.document"
         };
+        var created = await _drive.Files.Create(fileMetadata).ExecuteAsync();
+        var docId = created.Id;
 
-        var upload = _drive.Files.Create(fileMetadata, ms,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        upload.Fields = "id";
-        var result = await upload.UploadAsync();
+        // Build Docs API requests to populate the document
+        var requests = new List<Google.Apis.Docs.v1.Data.Request>();
+        int idx = 1; // insertion index (1 = start of body)
 
-        if (result.Status == Google.Apis.Upload.UploadStatus.Completed)
+        var lines = markdownText.Split('\n');
+        foreach (var line in lines)
         {
-            _logger.LogInformation("Card saved: {FileName} in folder {FolderId}", fileName, folderId);
-            return (true, null);
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                // Empty line
+                requests.Add(new Google.Apis.Docs.v1.Data.Request
+                {
+                    InsertText = new Google.Apis.Docs.v1.Data.InsertTextRequest
+                    {
+                        Location = new Google.Apis.Docs.v1.Data.Location { Index = idx },
+                        Text = "\n"
+                    }
+                });
+                idx += 1;
+                continue;
+            }
+
+            // Parse bold markers
+            var segments = ParseBoldSegments(trimmed);
+            foreach (var (text, isBold) in segments)
+            {
+                requests.Add(new Google.Apis.Docs.v1.Data.Request
+                {
+                    InsertText = new Google.Apis.Docs.v1.Data.InsertTextRequest
+                    {
+                        Location = new Google.Apis.Docs.v1.Data.Location { Index = idx },
+                        Text = text
+                    }
+                });
+
+                if (isBold)
+                {
+                    requests.Add(new Google.Apis.Docs.v1.Data.Request
+                    {
+                        UpdateTextStyle = new Google.Apis.Docs.v1.Data.UpdateTextStyleRequest
+                        {
+                            Range = new Google.Apis.Docs.v1.Data.Range { StartIndex = idx, EndIndex = idx + text.Length },
+                            TextStyle = new Google.Apis.Docs.v1.Data.TextStyle { Bold = true },
+                            Fields = "bold"
+                        }
+                    });
+                }
+                idx += text.Length;
+            }
+
+            // Newline after paragraph
+            requests.Add(new Google.Apis.Docs.v1.Data.Request
+            {
+                InsertText = new Google.Apis.Docs.v1.Data.InsertTextRequest
+                {
+                    Location = new Google.Apis.Docs.v1.Data.Location { Index = idx },
+                    Text = "\n"
+                }
+            });
+            idx += 1;
         }
 
-        return (false, $"Upload failed: {result.Exception?.Message}");
+        if (requests.Count > 0)
+        {
+            var batchUpdate = new Google.Apis.Docs.v1.Data.BatchUpdateDocumentRequest { Requests = requests };
+            await _docs.Documents.BatchUpdate(batchUpdate, docId).ExecuteAsync();
+        }
+
+        _logger.LogInformation("Card saved as Google Doc: {FileName} in folder {FolderId}", fileName, folderId);
+        return (true, null);
+    }
+
+    private static List<(string text, bool bold)> ParseBoldSegments(string line)
+    {
+        var result = new List<(string text, bool bold)>();
+        var parts = line.Split("**");
+        bool isBold = false;
+        foreach (var part in parts)
+        {
+            if (!string.IsNullOrEmpty(part))
+                result.Add((part, isBold));
+            isBold = !isBold;
+        }
+        return result;
     }
 
     private static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
