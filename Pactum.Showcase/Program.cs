@@ -34,6 +34,7 @@ builder.Services.AddSingleton<DataService>();
 builder.Services.AddSingleton<DriveFileService>();
 builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<GoogleOAuthService>();
+builder.Services.AddSingleton<PromptService>();
 builder.Services.AddSingleton<CardGenerationService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 

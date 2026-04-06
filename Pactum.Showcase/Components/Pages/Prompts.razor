@@ -1,0 +1,83 @@
+@page "/prompts"
+@using Microsoft.AspNetCore.Authorization
+@using Pactum.Showcase.Models
+@using Pactum.Showcase.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject PromptService PromptService
+@rendermode InteractiveServer
+
+<PageTitle>Pactum — Промпты</PageTitle>
+
+<div class="d-flex" style="height: calc(100vh - 56px);">
+    <!-- Left: list -->
+    <div class="border-end d-flex flex-column" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
+        <div class="p-2 border-bottom bg-light" style="flex-shrink: 0;">
+            <h6 class="mb-0">Промпты</h6>
+        </div>
+        <div class="overflow-auto flex-grow-1">
+            <div class="list-group list-group-flush">
+                @foreach (var prompt in _prompts)
+                {
+                    var isSelected = _selected?.Id == prompt.Id;
+                    <button class="list-group-item list-group-item-action @(isSelected ? "active" : "") py-2 px-3"
+                            @onclick="() => _selected = prompt">
+                        <div class="fw-semibold">@prompt.Name</div>
+                        <small class="@(isSelected ? "text-light" : "text-muted")">
+                            @CategoryLabel(prompt.Category)
+                            @if (prompt.IsDefault)
+                            {
+                                <span> · по умолчанию</span>
+                            }
+                        </small>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: prompt text -->
+    <div class="flex-grow-1 d-flex flex-column overflow-hidden">
+        @if (_selected == null)
+        {
+            <div class="d-flex justify-content-center align-items-center flex-grow-1 text-muted">
+                <h5>Выберите промпт из списка</h5>
+            </div>
+        }
+        else
+        {
+            <div class="px-3 pt-3" style="flex-shrink: 0;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">@_selected.Name</h5>
+                    <div>
+                        <span class="badge bg-secondary me-1">@CategoryLabel(_selected.Category)</span>
+                        @if (_selected.IsDefault)
+                        {
+                            <span class="badge bg-primary">по умолчанию</span>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="overflow-auto flex-grow-1 px-3 pb-3">
+                <pre class="bg-light p-3 rounded border" style="white-space: pre-wrap; font-size: 0.9rem;">@_selected.Text</pre>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<PromptTemplate> _prompts = [];
+    private PromptTemplate? _selected;
+
+    protected override void OnInitialized()
+    {
+        _prompts = PromptService.GetAll();
+        _selected = _prompts.FirstOrDefault();
+    }
+
+    private static string CategoryLabel(string category) => category switch
+    {
+        "card" => "Карточка",
+        "image" => "Картинка",
+        _ => category
+    };
+}
