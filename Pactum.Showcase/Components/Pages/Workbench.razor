@@ -433,9 +433,7 @@
 
     private RenderFragment RenderCardTab() => __builder =>
     {
-        @if (_isAdmin)
-        {
-            <div class="mb-3">
+        <div class="mb-3">
                 <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
                         disabled="@(_cardGenerating || _cardDocLoading)">
                     @if (_cardGenerating)
@@ -449,7 +447,6 @@
                     }
                 </button>
             </div>
-        }
 
         @if (_cardDocLoading)
         {
