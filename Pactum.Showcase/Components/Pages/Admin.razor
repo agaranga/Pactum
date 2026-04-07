@@ -83,7 +83,6 @@
                     <p class="text-muted">Для создания файлов на Google Drive необходимо подключить аккаунт.</p>
                     <a href="/api/auth/google" class="btn btn-outline-primary">Подключить Google Drive</a>
                 }
-                <div class="mt-2"><small class="text-muted">@GoogleOAuth.GetDiagnostics()</small></div>
                 @if (_googleStatus == "ok")
                 {
                     <div class="alert alert-success mt-2 mb-0">Google Drive успешно подключен!</div>
