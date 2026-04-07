@@ -18,7 +18,7 @@
         <div class="p-2 border-bottom bg-light" style="flex-shrink: 0;">
             <input type="text" class="form-control form-control-sm mb-1" placeholder="Поиск по названию..."
                    @bind="_searchText" @bind:event="oninput" />
-            <div class="d-flex gap-1">
+            <div class="d-flex gap-1 mb-1">
                 <select class="form-select form-select-sm" @bind="_filterCity">
                     <option value="">Все города</option>
                     @if (_cities != null)
@@ -40,6 +40,16 @@
                     }
                 </select>
             </div>
+            <select class="form-select form-select-sm" @bind="_filterStatus">
+                <option value="">Все статусы</option>
+                @if (_statuses != null)
+                {
+                    @foreach (var status in _statuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                }
+            </select>
             <div class="d-flex justify-content-between align-items-center mt-1">
                 <small class="text-muted">@FilteredBusinesses.Count из @(_allBusinesses?.Count ?? 0)</small>
                 <select class="form-select form-select-sm" style="width: auto;" @bind="_sortBy">
@@ -178,9 +188,11 @@
     private string _searchText = "";
     private string _filterCity = "";
     private string _filterActivity = "";
+    private string _filterStatus = "";
     private string _sortBy = "row";
     private List<string>? _cities;
     private List<string>? _activities;
+    private List<string>? _statuses;
 
     // File info cache
     private readonly Dictionary<string, FilePresenceInfo> _fileInfoCache = new();
@@ -223,6 +235,9 @@
             if (!string.IsNullOrWhiteSpace(_filterActivity))
                 result = result.Where(b => b.ActivityType == _filterActivity);
 
+            if (!string.IsNullOrWhiteSpace(_filterStatus))
+                result = result.Where(b => b.Status == _filterStatus);
+
             result = _sortBy switch
             {
                 "name" => result.OrderBy(b => b.Name),
@@ -258,6 +273,13 @@
                 .Where(a => !string.IsNullOrWhiteSpace(a))
                 .Distinct()
                 .OrderBy(a => a)
+                .ToList();
+
+            _statuses = _allBusinesses
+                .Select(b => b.Status)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct()
+                .OrderBy(s => s)
                 .ToList();
 
             _ = LoadFileInfoAsync();
