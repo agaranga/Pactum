@@ -60,7 +60,11 @@ public class GoogleOAuthService
     public string GetAuthorizationUrl(string redirectUri)
     {
         var flow = CreateFlow();
-        return flow.CreateAuthorizationCodeRequest(redirectUri).Build().ToString();
+        var uri = flow.CreateAuthorizationCodeRequest(redirectUri).Build();
+        // Force consent to always get refresh token
+        var uriStr = uri.ToString();
+        uriStr += "&access_type=offline&prompt=consent";
+        return uriStr;
     }
 
     public async Task<bool> ExchangeCodeAsync(string code, string redirectUri)
@@ -72,11 +76,14 @@ public class GoogleOAuthService
             var token = await flow.ExchangeCodeForTokenAsync("user", code, redirectUri, CancellationToken.None);
             _credential = new UserCredential(flow, "user", token);
 
-            _logger.LogInformation("Google OAuth token obtained");
+            _logger.LogInformation("Google OAuth token obtained. RefreshToken present: {HasRefresh}",
+                !string.IsNullOrWhiteSpace(token.RefreshToken));
 
             // Save refresh token to Railway variable
             if (!string.IsNullOrWhiteSpace(token.RefreshToken))
                 await SaveRefreshTokenToRailwayAsync(token.RefreshToken);
+            else
+                _logger.LogWarning("No refresh token received from Google. Token may already exist — try revoking access at https://myaccount.google.com/permissions and reconnecting");
 
             return true;
         }
