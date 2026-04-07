@@ -68,9 +68,12 @@ public class GoogleOAuthService
     {
         var flow = CreateFlow();
         var uri = flow.CreateAuthorizationCodeRequest(redirectUri).Build();
-        // Force consent to always get refresh token
         var uriStr = uri.ToString();
-        uriStr += "&access_type=offline&prompt=consent";
+        // Force consent to always get refresh token
+        if (!uriStr.Contains("prompt="))
+            uriStr += "&prompt=consent";
+        else
+            uriStr = uriStr.Replace("prompt=", "prompt=consent");
         return uriStr;
     }
 
