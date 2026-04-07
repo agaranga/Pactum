@@ -57,6 +57,13 @@ public class GoogleOAuthService
 
     public bool IsAuthorized => _credential?.Token?.RefreshToken != null;
 
+    public string GetDiagnostics() =>
+        $"Railway API Token: {(_railwayApiToken != null ? "set" : "NOT SET")}, " +
+        $"ProjectId: {(_railwayProjectId != null ? "set" : "NOT SET")}, " +
+        $"ServiceId: {(_railwayServiceId != null ? "set" : "NOT SET")}, " +
+        $"EnvironmentId: {(_railwayEnvironmentId != null ? "set" : "NOT SET")}, " +
+        $"HasRefreshToken: {_credential?.Token?.RefreshToken != null}";
+
     public string GetAuthorizationUrl(string redirectUri)
     {
         var flow = CreateFlow();
