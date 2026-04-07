@@ -16,13 +16,9 @@
                     <li class="nav-item">
                         <NavLink class="nav-link" href="prompts">Промпты</NavLink>
                     </li>
-                    <AuthorizeView Roles="Admin" Context="adminCtx">
-                        <Authorized>
-                            <li class="nav-item">
-                                <NavLink class="nav-link" href="admin">Админ</NavLink>
-                            </li>
-                        </Authorized>
-                    </AuthorizeView>
+                    <li class="nav-item">
+                        <NavLink class="nav-link" href="settings">Настройки</NavLink>
+                    </li>
                 </ul>
                 <span class="navbar-text me-3">@authState.User.Identity?.Name</span>
                 <a class="btn btn-outline-light btn-sm" href="logout">Выйти</a>

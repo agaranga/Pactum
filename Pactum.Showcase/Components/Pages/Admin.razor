@@ -1,7 +1,8 @@
+@page "/settings"
 @page "/admin"
 @using Microsoft.AspNetCore.Authorization
 @using Pactum.Showcase.Services
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize]
 @inject DataService DataService
 @inject DriveFileService DriveService
 @inject CardGenerationService CardService
@@ -9,10 +10,10 @@
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
 
-<PageTitle>Pactum — Администрирование</PageTitle>
+<PageTitle>Pactum — Настройки</PageTitle>
 
 <div class="container py-3">
-    <h4 class="mb-4">Администрирование</h4>
+    <h4 class="mb-4">Настройки</h4>
 
     @if (_message != null)
     {
@@ -38,9 +39,12 @@
                     Загрузить из Google Sheets
                 </button>
 
-                <button class="btn btn-danger" @onclick="ShowClearConfirm" disabled="@_busy">
-                    Очистить базу
-                </button>
+                @if (_isAdmin)
+                {
+                    <button class="btn btn-danger" @onclick="ShowClearConfirm" disabled="@_busy">
+                        Очистить базу
+                    </button>
+                }
             </div>
 
             @if (_showClearConfirm)
@@ -62,71 +66,78 @@
         </div>
     </div>
 
-    <!-- Google Drive connection -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <strong>Google Drive</strong>
-        </div>
-        <div class="card-body">
-            @if (GoogleOAuth.IsAuthorized)
-            {
-                <span class="text-success">Подключен</span>
-            }
-            else
-            {
-                <p class="text-muted">Для создания файлов на Google Drive необходимо подключить аккаунт.</p>
-                <a href="/api/auth/google" class="btn btn-outline-primary">Подключить Google Drive</a>
-            }
-            @if (_googleStatus == "ok")
-            {
-                <div class="alert alert-success mt-2 mb-0">Google Drive успешно подключен!</div>
-            }
-            else if (_googleStatus == "error")
-            {
-                <div class="alert alert-danger mt-2 mb-0">Ошибка подключения Google Drive</div>
-            }
-        </div>
-    </div>
-
-    <!-- Card generation -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <strong>Генерация карточек</strong>
-        </div>
-        <div class="card-body">
-            <div class="mb-3">
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="cardGenMode" id="modeMissing"
-                           checked="@(_cardGenMode == "missing")" @onchange="SetModeMissing" />
-                    <label class="form-check-label" for="modeMissing">
-                        Недостающие — генерировать только где нет карточки
-                    </label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="cardGenMode" id="modeAll"
-                           checked="@(_cardGenMode == "all")" @onchange="SetModeAll" />
-                    <label class="form-check-label" for="modeAll">
-                        Все — перегенерировать все карточки заново
-                    </label>
-                </div>
+    @if (_isAdmin)
+    {
+        <!-- Google Drive connection -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <strong>Google Drive</strong>
             </div>
-
-            <button class="btn btn-primary" @onclick="GenerateCards" disabled="@_busy">
-                @if (_busy && _currentOp == "cards")
+            <div class="card-body">
+                @if (GoogleOAuth.IsAuthorized)
                 {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                    <span>Генерация @_cardGenProgress...</span>
+                    <span class="text-success">Подключен</span>
                 }
                 else
                 {
-                    <span>Сгенерировать карточки</span>
+                    <p class="text-muted">Для создания файлов на Google Drive необходимо подключить аккаунт.</p>
+                    <a href="/api/auth/google" class="btn btn-outline-primary">Подключить Google Drive</a>
                 }
-            </button>
+                @if (_googleStatus == "ok")
+                {
+                    <div class="alert alert-success mt-2 mb-0">Google Drive успешно подключен!</div>
+                }
+                else if (_googleStatus == "error")
+                {
+                    <div class="alert alert-danger mt-2 mb-0">Ошибка подключения Google Drive</div>
+                }
+            </div>
         </div>
-    </div>
+
+        <!-- Card generation -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <strong>Генерация карточек</strong>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cardGenMode" id="modeMissing"
+                               checked="@(_cardGenMode == "missing")" @onchange="SetModeMissing" />
+                        <label class="form-check-label" for="modeMissing">
+                            Недостающие — генерировать только где нет карточки
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cardGenMode" id="modeAll"
+                               checked="@(_cardGenMode == "all")" @onchange="SetModeAll" />
+                        <label class="form-check-label" for="modeAll">
+                            Все — перегенерировать все карточки заново
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" @onclick="GenerateCards" disabled="@_busy">
+                    @if (_busy && _currentOp == "cards")
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Генерация @_cardGenProgress...</span>
+                    }
+                    else
+                    {
+                        <span>Сгенерировать карточки</span>
+                    }
+                </button>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
     private string? _message;
     private bool _isError;
     private bool _busy;
@@ -146,6 +157,11 @@
         if (firstRender && !_initialized)
         {
             _initialized = true;
+            if (AuthState != null)
+            {
+                var state = await AuthState;
+                _isAdmin = state.User.IsInRole("Admin");
+            }
             _googleStatus = GoogleStatus;
             _count = await DataService.GetCountAsync();
             StateHasChanged();
@@ -219,7 +235,6 @@
                 _cardGenProgress = $"({i + 1}/{withId.Count}) {biz.Name}";
                 StateHasChanged();
 
-                // Check if card already exists (skip if mode = missing)
                 if (_cardGenMode == "missing")
                 {
                     var info = await DriveService.CheckFilesAsync(biz.ExternalId!);
