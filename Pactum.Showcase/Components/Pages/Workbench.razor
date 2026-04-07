@@ -7,6 +7,7 @@
 @inject DataService DataService
 @inject DriveFileService DriveService
 @inject CardGenerationService CardService
+@inject GoogleOAuthService GoogleOAuth
 @rendermode InteractiveServer
 
 <PageTitle>Pactum — Рабочий стол</PageTitle>
@@ -179,6 +180,7 @@
     private Task<AuthenticationState>? AuthState { get; set; }
 
     private bool _isAdmin;
+    private bool _oauthConnected;
     private List<BusinessEntity>? _allBusinesses;
     private BusinessEntity? _selected;
     private int _activeTab;
@@ -259,6 +261,7 @@
                 var state = await AuthState;
                 _isAdmin = state.User.IsInRole("Admin");
             }
+            _oauthConnected = GoogleOAuth.IsAuthorized;
             _allBusinesses = await DataService.GetAllAsync();
 
             _cities = _allBusinesses
@@ -434,18 +437,25 @@
     private RenderFragment RenderCardTab() => __builder =>
     {
         <div class="mb-3">
-                <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
-                        disabled="@(_cardGenerating || _cardDocLoading)">
-                    @if (_cardGenerating)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                        <span>Генерация...</span>
-                    }
-                    else
-                    {
-                        <span>Сгенерировать карточку</span>
-                    }
-                </button>
+                @if (_oauthConnected)
+                {
+                    <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
+                            disabled="@(_cardGenerating || _cardDocLoading)">
+                        @if (_cardGenerating)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Генерация...</span>
+                        }
+                        else
+                        {
+                            <span>Сгенерировать карточку</span>
+                        }
+                    </button>
+                }
+                else
+                {
+                    <span class="text-muted">Для генерации карточек необходимо подключить Google Drive в Настройках</span>
+                }
             </div>
 
         @if (_cardDocLoading)
