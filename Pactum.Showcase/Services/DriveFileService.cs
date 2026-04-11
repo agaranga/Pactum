@@ -72,28 +72,17 @@ public class DriveFileService
             if (cityFolderId == null)
                 return null;
 
-            // Search across ALL configured city folders
-            foreach (var cityEntry in _cityFolderIds)
-            {
-                var req = _drive.Files.List();
-                req.Q = $"'{cityEntry.Value}' in parents and mimeType = 'application/vnd.google-apps.folder' and name contains '{externalId}'";
-                req.Fields = "files(id, name)";
-                var result = await req.ExecuteAsync();
+            // Search only in the specified city folder
+            var req = _drive.Files.List();
+            req.Q = $"'{cityFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and name contains '{externalId}'";
+            req.Fields = "files(id, name)";
+            var result = await req.ExecuteAsync();
 
-                // Verify folder has files (skip empty/orphaned folders)
-                foreach (var folder in result.Files.Where(f => f.Name.StartsWith(externalId, StringComparison.OrdinalIgnoreCase)))
-                {
-                    var filesCheck = _drive.Files.List();
-                    filesCheck.Q = $"'{folder.Id}' in parents";
-                    filesCheck.Fields = "files(id)";
-                    filesCheck.PageSize = 1;
-                    var hasFiles = await filesCheck.ExecuteAsync();
-                    if (hasFiles.Files.Count > 0)
-                    {
-                        _bizFolderIds[externalId] = folder.Id;
-                        return folder.Id;
-                    }
-                }
+            var folder = result.Files.FirstOrDefault(f => f.Name.StartsWith(externalId, StringComparison.OrdinalIgnoreCase));
+            if (folder != null)
+            {
+                _bizFolderIds[externalId] = folder.Id;
+                return folder.Id;
             }
 
             return null;
