@@ -493,28 +493,97 @@
         {
             <div class="alert alert-warning">@_imagesError</div>
         }
-        else if (_images != null && _images.Count == 0)
-        {
-            <div class="text-muted text-center py-4">Картинок нет</div>
-        }
         else if (_images != null)
         {
-            <div class="row g-3">
-                @foreach (var img in _images)
+            var genPrefix = $"{_selected!.ExternalId}_GEN_";
+            var managerImages = _images.Where(i =>
+                !i.Name.StartsWith(genPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            var generatedImages = _images.Where(i =>
+                i.Name.StartsWith(genPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            <!-- Section 1: Manager images -->
+            <div class="mb-4">
+                <h6 class="text-muted mb-2">Картинки от менеджеров</h6>
+                @if (managerImages.Count == 0)
                 {
-                    <div class="col-6 col-md-4 col-lg-3">
-                        <div class="card h-100">
-                            <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
-                                 style="object-fit: cover; height: 200px;" loading="lazy" />
-                            <div class="card-body p-2">
-                                <small class="text-muted text-truncate d-block">@img.Name</small>
+                    <div class="text-muted small">Нет картинок</div>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var img in managerImages)
+                        {
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <div class="card h-100">
+                                    <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
+                                         style="object-fit: cover; height: 200px;" loading="lazy" />
+                                    <div class="card-body p-2">
+                                        <small class="text-muted text-truncate d-block">@img.Name</small>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        }
                     </div>
                 }
             </div>
+
+            <!-- Section 2: Generated images -->
+            <div class="mb-4">
+                <h6 class="text-muted mb-2">Сгенерированные картинки</h6>
+                @if (generatedImages.Count == 0)
+                {
+                    <div class="text-muted small">Нет картинок</div>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var img in generatedImages)
+                        {
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <div class="card h-100">
+                                    <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
+                                         style="object-fit: cover; height: 200px;" loading="lazy" />
+                                    <div class="card-body p-2">
+                                        <small class="text-muted text-truncate d-block">@img.Name</small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Section 3: Generation controls -->
+            <div class="card">
+                <div class="card-header">
+                    <strong>Генерация картинки</strong>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-outline-primary btn-sm mb-2" @onclick="GenerateImagePrompt" disabled>
+                        Сгенерировать промпт
+                    </button>
+                    <textarea class="form-control mb-2" rows="4" @bind="_imagePrompt"
+                              placeholder="Промпт для генерации картинки..."></textarea>
+                    <button class="btn btn-primary btn-sm" @onclick="GenerateImage" disabled>
+                        Сгенерировать картинку
+                    </button>
+                    <div class="text-muted small mt-2">Функционал будет добавлен позже</div>
+                </div>
+            </div>
         }
     };
+
+    private string _imagePrompt = "";
+
+    private Task GenerateImagePrompt()
+    {
+        return Task.CompletedTask;
+    }
+
+    private Task GenerateImage()
+    {
+        return Task.CompletedTask;
+    }
 
     private Dictionary<string, string> GetProperties(BusinessEntity biz)
     {
