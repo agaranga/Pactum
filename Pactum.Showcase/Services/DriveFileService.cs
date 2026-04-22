@@ -435,7 +435,10 @@ public class DriveFileService
     {
         var oauthDrive = await _oauth.GetDriveServiceAsync();
         if (oauthDrive == null)
-            return (false, "Google OAuth не настроен. Перейдите в Админ → Подключить Google Drive.");
+        {
+            var err = _oauth.LastError ?? "Google OAuth не настроен. Перейдите в Настройки → Подключить Google Drive.";
+            return (false, err);
+        }
 
         var folderId = await FindBizFolderAsync(externalId);
         if (folderId == null)

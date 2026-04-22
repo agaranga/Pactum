@@ -57,6 +57,8 @@ public class GoogleOAuthService
 
     public bool IsAuthorized => _credential?.Token?.RefreshToken != null;
 
+    public string? LastError { get; private set; }
+
     public string GetDiagnostics() =>
         $"Railway API Token: {(_railwayApiToken != null ? "set" : "NOT SET")}, " +
         $"ProjectId: {(_railwayProjectId != null ? "set" : "NOT SET")}, " +
@@ -124,21 +126,33 @@ public class GoogleOAuthService
 
     private async Task<UserCredential?> GetCredentialAsync()
     {
-        if (_credential == null) return null;
+        if (_credential == null)
+        {
+            LastError = "Google OAuth не подключён. Перейдите в Настройки → Подключить Google Drive.";
+            return null;
+        }
 
-        if (_credential.Token.IsStale)
+        // Always refresh if we only have a refresh token (no access token yet)
+        if (_credential.Token.IsStale || string.IsNullOrEmpty(_credential.Token.AccessToken))
         {
             try
             {
-                await _credential.RefreshTokenAsync(CancellationToken.None);
+                var success = await _credential.RefreshTokenAsync(CancellationToken.None);
+                if (!success)
+                {
+                    LastError = "Не удалось обновить токен Google. Переподключите Google Drive в Настройках.";
+                    return null;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to refresh OAuth token");
+                LastError = $"Ошибка обновления токена: {ex.Message}";
                 return null;
             }
         }
 
+        LastError = null;
         return _credential;
     }
 
