@@ -76,7 +76,8 @@
             <div class="card-body">
                 @if (GoogleOAuth.IsAuthorized)
                 {
-                    <span class="text-success">Подключен</span>
+                    <span class="text-success me-3">Подключен</span>
+                    <a href="/api/auth/google" class="btn btn-outline-secondary btn-sm">Переподключить</a>
                 }
                 else
                 {
