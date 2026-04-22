@@ -496,10 +496,12 @@
         else if (_images != null)
         {
             var genPrefix = $"{_selected!.ExternalId}_GEN_";
-            var managerImages = _images.Where(i =>
-                !i.Name.StartsWith(genPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            var managerPrefix = $"{_selected.ExternalId}_";
             var generatedImages = _images.Where(i =>
                 i.Name.StartsWith(genPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            var managerImages = _images.Where(i =>
+                i.Name.StartsWith(managerPrefix, StringComparison.OrdinalIgnoreCase)
+                && !i.Name.StartsWith(genPrefix, StringComparison.OrdinalIgnoreCase)).ToList();
 
             <!-- Section 1: Manager images -->
             <div class="mb-4">
