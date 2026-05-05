@@ -429,6 +429,80 @@ public class DriveFileService
     }
 
     /// <summary>
+    /// Read the saved image prompt text file from the business folder.
+    /// </summary>
+    public async Task<string?> ReadImagePromptAsync(string externalId)
+    {
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null) return null;
+
+        var fileName = $"{externalId}_imgprompt.txt";
+        var req = _drive.Files.List();
+        req.Q = $"'{folderId}' in parents and name = '{fileName}'";
+        req.Fields = "files(id, name)";
+        var result = await req.ExecuteAsync();
+
+        var file = result.Files.FirstOrDefault();
+        if (file == null) return null;
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await _drive.Files.Get(file.Id).DownloadAsync(ms);
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read image prompt for {Id}", externalId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Save image prompt text to a file in the business folder via OAuth.
+    /// </summary>
+    public async Task<(bool success, string? error)> SaveImagePromptAsync(string externalId, string text)
+    {
+        var oauthDrive = await _oauth.GetDriveServiceAsync();
+        if (oauthDrive == null)
+            return (false, _oauth.LastError ?? "Google OAuth не подключён");
+
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null)
+            return (false, "Папка бизнеса не найдена");
+
+        var fileName = $"{externalId}_imgprompt.txt";
+
+        // Delete existing
+        var existingReq = _drive.Files.List();
+        existingReq.Q = $"'{folderId}' in parents and name = '{fileName}'";
+        existingReq.Fields = "files(id)";
+        var existing = await existingReq.ExecuteAsync();
+        foreach (var old in existing.Files)
+        {
+            try { await oauthDrive.Files.Delete(old.Id).ExecuteAsync(); }
+            catch { }
+        }
+
+        var fileMetadata = new Google.Apis.Drive.v3.Data.File
+        {
+            Name = fileName,
+            Parents = [folderId],
+            MimeType = "text/plain"
+        };
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        using var ms = new MemoryStream(bytes);
+        var upload = oauthDrive.Files.Create(fileMetadata, ms, "text/plain");
+        upload.Fields = "id";
+        var result = await upload.UploadAsync();
+
+        if (result.Status == Google.Apis.Upload.UploadStatus.Completed)
+            return (true, null);
+        return (false, $"Upload failed: {result.Exception?.Message}");
+    }
+
+    /// <summary>
     /// Find the next available index N for ID_GEN_N images in the business folder.
     /// </summary>
     public async Task<int> GetNextGenIndexAsync(string externalId)

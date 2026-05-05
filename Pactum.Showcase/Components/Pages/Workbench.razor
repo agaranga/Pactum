@@ -317,6 +317,8 @@
         _mainDocLoadedForId = null;
         _cardDocLoadedForId = null;
         _imagesLoadedForId = null;
+        _imagePromptLoadedForId = null;
+        _imagePrompt = "";
 
         if (_activeTab > 0)
             await SwitchTab(_activeTab);
@@ -365,6 +367,14 @@
             _imagesError = error;
             _imagesLoading = false;
             _imagesLoadedForId = eid;
+
+            // Load saved image prompt
+            if (_imagePromptLoadedForId != eid)
+            {
+                var saved = await DriveService.ReadImagePromptAsync(eid);
+                _imagePrompt = saved ?? "";
+                _imagePromptLoadedForId = eid;
+            }
         }
     }
 
@@ -581,6 +591,9 @@
                     </button>
                     <textarea class="form-control mb-2" rows="6" @bind="_imagePrompt"
                               placeholder="Промпт для генерации картинки..."></textarea>
+                    <button class="btn btn-outline-secondary btn-sm mb-2" @onclick="SaveImagePromptManual">
+                        Сохранить промпт
+                    </button>
                     @if (_imageGenError != null)
                     {
                         <div class="alert alert-warning py-2">@_imageGenError</div>
@@ -609,6 +622,7 @@
     private string _imagePrompt = "";
     private bool _imagePromptLoading;
     private string? _imagePromptError;
+    private string? _imagePromptLoadedForId;
 
     private async Task GenerateImagePrompt()
     {
@@ -621,11 +635,24 @@
 
         var (success, text) = await ImagePromptService.GeneratePromptAsync(_selected.ExternalId);
         if (success)
+        {
             _imagePrompt = text;
+            // Save to Drive
+            var (saveOk, saveErr) = await DriveService.SaveImagePromptAsync(_selected.ExternalId, text);
+            if (!saveOk)
+                _imagePromptError = $"Промпт сгенерирован, но не сохранён: {saveErr}";
+        }
         else
             _imagePromptError = text;
 
         _imagePromptLoading = false;
+    }
+
+    private async Task SaveImagePromptManual()
+    {
+        if (_selected == null || string.IsNullOrWhiteSpace(_selected.ExternalId)) return;
+        var (ok, err) = await DriveService.SaveImagePromptAsync(_selected.ExternalId, _imagePrompt);
+        if (!ok) _imagePromptError = err;
     }
 
     private bool _imageGenLoading;
