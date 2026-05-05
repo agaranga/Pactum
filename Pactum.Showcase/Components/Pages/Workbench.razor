@@ -178,6 +178,47 @@
     </div>
 </div>
 
+@if (_previewImage != null)
+{
+    <div class="image-preview-overlay" @onclick="() => _previewImage = null">
+        <img src="/api/images/@_previewImage.Id" alt="@_previewImage.Name" />
+        <div class="image-preview-name">@_previewImage.Name</div>
+        <button type="button" class="btn-close btn-close-white image-preview-close"
+                @onclick:stopPropagation="true" @onclick="() => _previewImage = null"></button>
+    </div>
+}
+
+<style>
+    .image-preview-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1050;
+        cursor: pointer;
+        padding: 2rem;
+    }
+    .image-preview-overlay img {
+        max-width: 95vw;
+        max-height: 90vh;
+        object-fit: contain;
+    }
+    .image-preview-name {
+        color: white;
+        margin-top: 1rem;
+        font-size: 0.9rem;
+    }
+    .image-preview-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        font-size: 1.5rem;
+    }
+</style>
+
 @code {
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
@@ -530,7 +571,9 @@
                             <div class="col-6 col-md-4 col-lg-3">
                                 <div class="card h-100">
                                     <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
-                                         style="object-fit: cover; height: 200px;" loading="lazy" />
+                                         style="object-fit: cover; height: 200px; cursor: pointer;"
+                                         loading="lazy"
+                                         @onclick="() => _previewImage = img" />
                                     <div class="card-body p-2">
                                         <small class="text-muted text-truncate d-block">@img.Name</small>
                                     </div>
@@ -556,7 +599,9 @@
                             <div class="col-6 col-md-4 col-lg-3">
                                 <div class="card h-100">
                                     <img src="/api/images/@img.Id" class="card-img-top" alt="@img.Name"
-                                         style="object-fit: cover; height: 200px;" loading="lazy" />
+                                         style="object-fit: cover; height: 200px; cursor: pointer;"
+                                         loading="lazy"
+                                         @onclick="() => _previewImage = img" />
                                     <div class="card-body p-2">
                                         <small class="text-muted text-truncate d-block">@img.Name</small>
                                     </div>
@@ -620,6 +665,7 @@
     };
 
     private string _imagePrompt = "";
+    private ImageInfo? _previewImage;
     private bool _imagePromptLoading;
     private string? _imagePromptError;
     private string? _imagePromptLoadedForId;
