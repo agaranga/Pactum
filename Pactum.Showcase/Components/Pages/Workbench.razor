@@ -9,6 +9,7 @@
 @inject DriveFileService DriveService
 @inject CardGenerationService CardService
 @inject ImagePromptService ImagePromptService
+@inject ImageGenerationService ImageGenService
 @inject GoogleOAuthService GoogleOAuth
 @rendermode InteractiveServer
 
@@ -580,10 +581,26 @@
                     </button>
                     <textarea class="form-control mb-2" rows="6" @bind="_imagePrompt"
                               placeholder="Промпт для генерации картинки..."></textarea>
-                    <button class="btn btn-primary btn-sm" @onclick="GenerateImage" disabled>
-                        Сгенерировать картинку
+                    @if (_imageGenError != null)
+                    {
+                        <div class="alert alert-warning py-2">@_imageGenError</div>
+                    }
+                    @if (_imageGenMessage != null)
+                    {
+                        <div class="alert alert-success py-2">@_imageGenMessage</div>
+                    }
+                    <button class="btn btn-primary btn-sm" @onclick="GenerateImage"
+                            disabled="@(_imageGenLoading || string.IsNullOrWhiteSpace(_imagePrompt))">
+                        @if (_imageGenLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Генерация (1-2 мин)...</span>
+                        }
+                        else
+                        {
+                            <span>Сгенерировать картинку</span>
+                        }
                     </button>
-                    <div class="text-muted small mt-2">Генерация картинки будет добавлена позже</div>
                 </div>
             </div>
         }
@@ -611,9 +628,39 @@
         _imagePromptLoading = false;
     }
 
-    private Task GenerateImage()
+    private bool _imageGenLoading;
+    private string? _imageGenError;
+    private string? _imageGenMessage;
+
+    private async Task GenerateImage()
     {
-        return Task.CompletedTask;
+        if (_selected == null || string.IsNullOrWhiteSpace(_selected.ExternalId)
+            || string.IsNullOrWhiteSpace(_imagePrompt))
+            return;
+
+        _imageGenLoading = true;
+        _imageGenError = null;
+        _imageGenMessage = null;
+        StateHasChanged();
+
+        var (success, msg, _) = await ImageGenService.GenerateAsync(_selected.ExternalId, _imagePrompt);
+
+        if (success)
+        {
+            _imageGenMessage = msg;
+            // Reload images list
+            _imagesLoadedForId = null;
+            var (images, error) = await DriveService.ListImagesAsync(_selected.ExternalId);
+            _images = images;
+            _imagesError = error;
+            _imagesLoadedForId = _selected.ExternalId;
+        }
+        else
+        {
+            _imageGenError = msg;
+        }
+
+        _imageGenLoading = false;
     }
 
     private Dictionary<string, string> GetProperties(BusinessEntity biz)

@@ -429,6 +429,67 @@ public class DriveFileService
     }
 
     /// <summary>
+    /// Find the next available index N for ID_GEN_N images in the business folder.
+    /// </summary>
+    public async Task<int> GetNextGenIndexAsync(string externalId)
+    {
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null) return 1;
+
+        var prefix = $"{externalId}_GEN_";
+        var req = _drive.Files.List();
+        req.Q = $"'{folderId}' in parents and (mimeType contains 'image/')";
+        req.Fields = "files(name)";
+        var result = await req.ExecuteAsync();
+
+        int maxIdx = 0;
+        foreach (var f in result.Files)
+        {
+            if (!f.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            var rest = f.Name[prefix.Length..];
+            var dotIdx = rest.IndexOf('.');
+            var numStr = dotIdx > 0 ? rest[..dotIdx] : rest;
+            if (int.TryParse(numStr, out var n) && n > maxIdx)
+                maxIdx = n;
+        }
+        return maxIdx + 1;
+    }
+
+    /// <summary>
+    /// Upload an image file to the business folder via OAuth.
+    /// </summary>
+    public async Task<(bool success, string? error)> UploadImageAsync(
+        string externalId, string fileName, byte[] data, string mimeType)
+    {
+        var oauthDrive = await _oauth.GetDriveServiceAsync();
+        if (oauthDrive == null)
+            return (false, _oauth.LastError ?? "Google OAuth не подключён");
+
+        var folderId = await FindBizFolderAsync(externalId);
+        if (folderId == null)
+            return (false, "Папка бизнеса не найдена");
+
+        var fileMetadata = new Google.Apis.Drive.v3.Data.File
+        {
+            Name = fileName,
+            Parents = [folderId],
+            MimeType = mimeType
+        };
+
+        using var ms = new MemoryStream(data);
+        var upload = oauthDrive.Files.Create(fileMetadata, ms, mimeType);
+        upload.Fields = "id";
+        var result = await upload.UploadAsync();
+
+        if (result.Status == Google.Apis.Upload.UploadStatus.Completed)
+        {
+            _logger.LogInformation("Image uploaded: {Name}", fileName);
+            return (true, null);
+        }
+        return (false, $"Upload failed: {result.Exception?.Message}");
+    }
+
+    /// <summary>
     /// Save generated card as a Google Doc in the business folder on Drive.
     /// </summary>
     public async Task<(bool success, string? error)> SaveCardDocxAsync(string externalId, string markdownText)
