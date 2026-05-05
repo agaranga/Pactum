@@ -8,6 +8,7 @@
 @inject DataService DataService
 @inject DriveFileService DriveService
 @inject CardGenerationService CardService
+@inject ImagePromptService ImagePromptService
 @inject GoogleOAuthService GoogleOAuth
 @rendermode InteractiveServer
 
@@ -561,25 +562,53 @@
                     <strong>Генерация картинки</strong>
                 </div>
                 <div class="card-body">
-                    <button class="btn btn-outline-primary btn-sm mb-2" @onclick="GenerateImagePrompt" disabled>
-                        Сгенерировать промпт
+                    @if (_imagePromptError != null)
+                    {
+                        <div class="alert alert-warning py-2">@_imagePromptError</div>
+                    }
+                    <button class="btn btn-outline-primary btn-sm mb-2" @onclick="GenerateImagePrompt"
+                            disabled="@_imagePromptLoading">
+                        @if (_imagePromptLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                            <span>Генерация промпта...</span>
+                        }
+                        else
+                        {
+                            <span>Сгенерировать промпт</span>
+                        }
                     </button>
-                    <textarea class="form-control mb-2" rows="4" @bind="_imagePrompt"
+                    <textarea class="form-control mb-2" rows="6" @bind="_imagePrompt"
                               placeholder="Промпт для генерации картинки..."></textarea>
                     <button class="btn btn-primary btn-sm" @onclick="GenerateImage" disabled>
                         Сгенерировать картинку
                     </button>
-                    <div class="text-muted small mt-2">Функционал будет добавлен позже</div>
+                    <div class="text-muted small mt-2">Генерация картинки будет добавлена позже</div>
                 </div>
             </div>
         }
     };
 
     private string _imagePrompt = "";
+    private bool _imagePromptLoading;
+    private string? _imagePromptError;
 
-    private Task GenerateImagePrompt()
+    private async Task GenerateImagePrompt()
     {
-        return Task.CompletedTask;
+        if (_selected == null || string.IsNullOrWhiteSpace(_selected.ExternalId))
+            return;
+
+        _imagePromptLoading = true;
+        _imagePromptError = null;
+        StateHasChanged();
+
+        var (success, text) = await ImagePromptService.GeneratePromptAsync(_selected.ExternalId);
+        if (success)
+            _imagePrompt = text;
+        else
+            _imagePromptError = text;
+
+        _imagePromptLoading = false;
     }
 
     private Task GenerateImage()

@@ -36,6 +36,7 @@ builder.Services.AddSingleton<DescriptionService>();
 builder.Services.AddSingleton<GoogleOAuthService>();
 builder.Services.AddSingleton<PromptService>();
 builder.Services.AddSingleton<CardGenerationService>();
+builder.Services.AddSingleton<ImagePromptService>();
 builder.Services.AddSingleton<IUserService, ConfigUserService>();
 
 var app = builder.Build();
