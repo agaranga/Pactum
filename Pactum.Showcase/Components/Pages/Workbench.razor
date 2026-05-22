@@ -10,6 +10,7 @@
 @inject CardGenerationService CardService
 @inject ImagePromptService ImagePromptService
 @inject ImageGenerationService ImageGenService
+@inject PromptService PromptService
 @inject GoogleOAuthService GoogleOAuth
 @rendermode InteractiveServer
 
@@ -308,6 +309,12 @@
             _oauthConnected = GoogleOAuth.IsAuthorized;
             _allBusinesses = await DataService.GetAllAsync();
 
+            var allPrompts = await PromptService.GetAllAsync();
+            _cardPrompts = allPrompts.Where(p => p.Category == "card").ToList();
+            _imagePrompts = allPrompts.Where(p => p.Category == "image-prompt").ToList();
+            _selectedCardPromptId = _cardPrompts.FirstOrDefault(p => p.IsDefault)?.Id ?? _cardPrompts.FirstOrDefault()?.Id;
+            _selectedImagePromptId = _imagePrompts.FirstOrDefault(p => p.IsDefault)?.Id ?? _imagePrompts.FirstOrDefault()?.Id;
+
             _cities = _allBusinesses
                 .Select(b => b.City)
                 .Where(c => !string.IsNullOrWhiteSpace(c))
@@ -429,7 +436,7 @@
         _cardDocHtml = null;
         StateHasChanged();
 
-        var (success, message) = await CardService.GenerateCardAsync(_selected.ExternalId);
+        var (success, message) = await CardService.GenerateCardAsync(_selected.ExternalId, _selectedCardPromptId);
 
         if (success)
         {
@@ -493,18 +500,27 @@
         <div class="mb-3">
                 @if (_oauthConnected)
                 {
-                    <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
-                            disabled="@(_cardGenerating || _cardDocLoading)">
-                        @if (_cardGenerating)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                            <span>Генерация...</span>
-                        }
-                        else
-                        {
-                            <span>Сгенерировать карточку</span>
-                        }
-                    </button>
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <select class="form-select form-select-sm" style="width: auto; max-width: 280px;"
+                                @bind="_selectedCardPromptId">
+                            @foreach (var p in _cardPrompts)
+                            {
+                                <option value="@p.Id">@p.Name @(p.IsDefault ? "(по умолчанию)" : "")</option>
+                            }
+                        </select>
+                        <button class="btn btn-primary btn-sm" @onclick="GenerateCard"
+                                disabled="@(_cardGenerating || _cardDocLoading)">
+                            @if (_cardGenerating)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Генерация...</span>
+                            }
+                            else
+                            {
+                                <span>Сгенерировать карточку</span>
+                            }
+                        </button>
+                    </div>
                 }
                 else
                 {
@@ -622,18 +638,27 @@
                     {
                         <div class="alert alert-warning py-2">@_imagePromptError</div>
                     }
-                    <button class="btn btn-outline-primary btn-sm mb-2" @onclick="GenerateImagePrompt"
-                            disabled="@_imagePromptLoading">
-                        @if (_imagePromptLoading)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                            <span>Генерация промпта...</span>
-                        }
-                        else
-                        {
-                            <span>Сгенерировать промпт</span>
-                        }
-                    </button>
+                    <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                        <select class="form-select form-select-sm" style="width: auto; max-width: 280px;"
+                                @bind="_selectedImagePromptId">
+                            @foreach (var p in _imagePrompts)
+                            {
+                                <option value="@p.Id">@p.Name @(p.IsDefault ? "(по умолчанию)" : "")</option>
+                            }
+                        </select>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="GenerateImagePrompt"
+                                disabled="@_imagePromptLoading">
+                            @if (_imagePromptLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <span>Генерация промпта...</span>
+                            }
+                            else
+                            {
+                                <span>Сгенерировать промпт</span>
+                            }
+                        </button>
+                    </div>
                     <textarea class="form-control mb-2" rows="6" @bind="_imagePrompt"
                               placeholder="Промпт для генерации картинки..."></textarea>
                     <button class="btn btn-outline-secondary btn-sm mb-2" @onclick="SaveImagePromptManual">
@@ -666,6 +691,10 @@
 
     private string _imagePrompt = "";
     private ImageInfo? _previewImage;
+    private List<PromptTemplate> _cardPrompts = [];
+    private List<PromptTemplate> _imagePrompts = [];
+    private string? _selectedCardPromptId;
+    private string? _selectedImagePromptId;
     private bool _imagePromptLoading;
     private string? _imagePromptError;
     private string? _imagePromptLoadedForId;
@@ -679,7 +708,7 @@
         _imagePromptError = null;
         StateHasChanged();
 
-        var (success, text) = await ImagePromptService.GeneratePromptAsync(_selected.ExternalId);
+        var (success, text) = await ImagePromptService.GeneratePromptAsync(_selected.ExternalId, _selectedImagePromptId);
         if (success)
         {
             _imagePrompt = text;

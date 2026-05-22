@@ -429,6 +429,70 @@ public class DriveFileService
     }
 
     /// <summary>
+    /// Read a config file from the Pactum root folder.
+    /// </summary>
+    public async Task<string?> ReadConfigFileAsync(string fileName)
+    {
+        var req = _drive.Files.List();
+        req.Q = $"'{_rootFolderId}' in parents and name = '{fileName}'";
+        req.Fields = "files(id, name)";
+        var result = await req.ExecuteAsync();
+
+        var file = result.Files.FirstOrDefault();
+        if (file == null) return null;
+
+        try
+        {
+            using var ms = new MemoryStream();
+            await _drive.Files.Get(file.Id).DownloadAsync(ms);
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read config file {Name}", fileName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Save a config file to the Pactum root folder via OAuth.
+    /// </summary>
+    public async Task<(bool success, string? error)> SaveConfigFileAsync(string fileName, string content)
+    {
+        var oauthDrive = await _oauth.GetDriveServiceAsync();
+        if (oauthDrive == null)
+            return (false, _oauth.LastError ?? "Google OAuth не подключён");
+
+        // Delete existing
+        var existingReq = _drive.Files.List();
+        existingReq.Q = $"'{_rootFolderId}' in parents and name = '{fileName}'";
+        existingReq.Fields = "files(id)";
+        var existing = await existingReq.ExecuteAsync();
+        foreach (var old in existing.Files)
+        {
+            try { await oauthDrive.Files.Delete(old.Id).ExecuteAsync(); }
+            catch { }
+        }
+
+        var fileMetadata = new Google.Apis.Drive.v3.Data.File
+        {
+            Name = fileName,
+            Parents = [_rootFolderId],
+            MimeType = "application/json"
+        };
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        using var ms = new MemoryStream(bytes);
+        var upload = oauthDrive.Files.Create(fileMetadata, ms, "application/json");
+        upload.Fields = "id";
+        var result = await upload.UploadAsync();
+
+        if (result.Status == Google.Apis.Upload.UploadStatus.Completed)
+            return (true, null);
+        return (false, $"Upload failed: {result.Exception?.Message}");
+    }
+
+    /// <summary>
     /// Read the saved image prompt text file from the business folder.
     /// </summary>
     public async Task<string?> ReadImagePromptAsync(string externalId)

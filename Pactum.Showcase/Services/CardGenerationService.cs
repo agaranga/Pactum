@@ -24,12 +24,14 @@ public class CardGenerationService
         _model = config["Anthropic:Model"] ?? "claude-sonnet-4-20250514";
     }
 
-    public async Task<(bool success, string message)> GenerateCardAsync(string externalId)
+    public async Task<(bool success, string message)> GenerateCardAsync(string externalId, string? promptId = null)
     {
-        _logger.LogInformation("Generating card for {Id}", externalId);
+        _logger.LogInformation("Generating card for {Id} with prompt {PromptId}", externalId, promptId ?? "default");
 
-        // Get prompt template
-        var promptTemplate = _promptService.GetDefault("card");
+        await _promptService.EnsureLoadedAsync();
+        var promptTemplate = promptId != null
+            ? _promptService.GetById(promptId)
+            : _promptService.GetDefault("card");
         if (promptTemplate == null)
             return (false, "Не найден промпт для генерации карточек");
 

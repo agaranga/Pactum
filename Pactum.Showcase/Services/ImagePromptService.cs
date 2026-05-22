@@ -24,9 +24,12 @@ public class ImagePromptService
         _model = config["Anthropic:Model"] ?? "claude-sonnet-4-20250514";
     }
 
-    public async Task<(bool success, string text)> GeneratePromptAsync(string externalId)
+    public async Task<(bool success, string text)> GeneratePromptAsync(string externalId, string? promptId = null)
     {
-        var template = _promptService.GetDefault("image-prompt");
+        await _promptService.EnsureLoadedAsync();
+        var template = promptId != null
+            ? _promptService.GetById(promptId)
+            : _promptService.GetDefault("image-prompt");
         if (template == null)
             return (false, "Не найден шаблон промпта для картинок");
 

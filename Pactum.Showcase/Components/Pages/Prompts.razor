@@ -11,8 +11,18 @@
 <div class="d-flex" style="height: calc(100vh - 56px);">
     <!-- Left: list -->
     <div class="border-end d-flex flex-column" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
-        <div class="p-2 border-bottom bg-light" style="flex-shrink: 0;">
+        <div class="p-2 border-bottom bg-light d-flex justify-content-between align-items-center" style="flex-shrink: 0;">
             <h6 class="mb-0">Промпты</h6>
+            @if (_isAdmin)
+            {
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">+</button>
+                    <ul class="dropdown-menu">
+                        <li><button class="dropdown-item" @onclick='() => StartCreate("card")'>Новый для карточек</button></li>
+                        <li><button class="dropdown-item" @onclick='() => StartCreate("image-prompt")'>Новый для картинок</button></li>
+                    </ul>
+                </div>
+            }
         </div>
         <div class="overflow-auto flex-grow-1">
             <div class="list-group list-group-flush">
@@ -20,7 +30,7 @@
                 {
                     var isSelected = _selected?.Id == prompt.Id;
                     <button class="list-group-item list-group-item-action @(isSelected ? "active" : "") py-2 px-3"
-                            @onclick="() => _selected = prompt">
+                            @onclick="() => SelectPrompt(prompt)">
                         <div class="fw-semibold">@prompt.Name</div>
                         <small class="@(isSelected ? "text-light" : "text-muted")">
                             @CategoryLabel(prompt.Category)
@@ -35,9 +45,28 @@
         </div>
     </div>
 
-    <!-- Right: prompt text -->
+    <!-- Right: prompt details -->
     <div class="flex-grow-1 d-flex flex-column overflow-hidden">
-        @if (_selected == null)
+        @if (_creating)
+        {
+            <div class="px-3 pt-3" style="flex-shrink: 0;">
+                <h5>Новый промпт (@CategoryLabel(_newCategory))</h5>
+                <input class="form-control mb-2" placeholder="Название" @bind="_newName" />
+            </div>
+            <div class="overflow-auto flex-grow-1 px-3 pb-3">
+                <textarea class="form-control mb-2" rows="20" @bind="_newText"
+                          placeholder="Текст промпта..."></textarea>
+                @if (_message != null)
+                {
+                    <div class="alert @(_isError ? "alert-danger" : "alert-success") py-2">@_message</div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" @onclick="SaveNew" disabled="@_busy">Создать</button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="() => _creating = false">Отмена</button>
+                </div>
+            </div>
+        }
+        else if (_selected == null)
         {
             <div class="d-flex justify-content-center align-items-center flex-grow-1 text-muted">
                 <h5>Выберите промпт из списка</h5>
@@ -46,8 +75,15 @@
         else
         {
             <div class="px-3 pt-3" style="flex-shrink: 0;">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="mb-0">@_selected.Name</h5>
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    @if (_editing)
+                    {
+                        <input class="form-control me-2" style="max-width: 400px;" @bind="_editName" />
+                    }
+                    else
+                    {
+                        <h5 class="mb-0">@_selected.Name</h5>
+                    }
                     <div>
                         <span class="badge bg-secondary me-1">@CategoryLabel(_selected.Category)</span>
                         @if (_selected.IsDefault)
@@ -56,28 +92,193 @@
                         }
                     </div>
                 </div>
+                @if (_isAdmin)
+                {
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                        @if (_editing)
+                        {
+                            <button class="btn btn-primary btn-sm" @onclick="SaveEdit" disabled="@_busy">Сохранить</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Отмена</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-outline-primary btn-sm" @onclick="StartEdit">Редактировать</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="Duplicate" disabled="@_busy">Дублировать</button>
+                            @if (!_selected.IsDefault)
+                            {
+                                <button class="btn btn-outline-success btn-sm" @onclick="SetDefault" disabled="@_busy">Сделать по умолчанию</button>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="Delete" disabled="@_busy">Удалить</button>
+                            }
+                        }
+                    </div>
+                }
+                @if (_message != null)
+                {
+                    <div class="alert @(_isError ? "alert-danger" : "alert-success") py-2 mb-2">@_message</div>
+                }
             </div>
             <div class="overflow-auto flex-grow-1 px-3 pb-3">
-                <pre class="bg-light p-3 rounded border" style="white-space: pre-wrap; font-size: 0.9rem;">@_selected.Text</pre>
+                @if (_editing)
+                {
+                    <textarea class="form-control" rows="25" style="font-size: 0.9rem;" @bind="_editText"></textarea>
+                }
+                else
+                {
+                    <pre class="bg-light p-3 rounded border" style="white-space: pre-wrap; font-size: 0.9rem;">@_selected.Text</pre>
+                }
             </div>
         }
     </div>
 </div>
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
     private List<PromptTemplate> _prompts = [];
     private PromptTemplate? _selected;
+    private bool _editing;
+    private bool _creating;
+    private bool _busy;
+    private string? _message;
+    private bool _isError;
 
-    protected override void OnInitialized()
+    private string _editName = "";
+    private string _editText = "";
+
+    private string _newName = "";
+    private string _newCategory = "card";
+    private string _newText = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _prompts = PromptService.GetAll();
-        _selected = _prompts.FirstOrDefault();
+        if (firstRender)
+        {
+            if (AuthState != null)
+            {
+                var state = await AuthState;
+                _isAdmin = state.User.IsInRole("Admin");
+            }
+            await ReloadPrompts();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadPrompts()
+    {
+        _prompts = await PromptService.GetAllAsync();
+        if (_selected != null)
+            _selected = _prompts.FirstOrDefault(p => p.Id == _selected.Id);
+        _selected ??= _prompts.FirstOrDefault();
+    }
+
+    private void SelectPrompt(PromptTemplate p)
+    {
+        _selected = p;
+        _editing = false;
+        _creating = false;
+        _message = null;
+    }
+
+    private void StartEdit()
+    {
+        if (_selected == null) return;
+        _editing = true;
+        _editName = _selected.Name;
+        _editText = _selected.Text;
+        _message = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = false;
+        _message = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        if (_selected == null) return;
+        _busy = true;
+        var (ok, err) = await PromptService.UpdateAsync(_selected.Id, _editName, _editText);
+        SetStatus(ok, ok ? "Сохранено" : err);
+        if (ok) { _editing = false; await ReloadPrompts(); }
+        _busy = false;
+    }
+
+    private void StartCreate(string category)
+    {
+        _creating = true;
+        _selected = null;
+        _newCategory = category;
+        _newName = "";
+        _newText = "";
+        _message = null;
+    }
+
+    private async Task SaveNew()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newText))
+        {
+            SetStatus(false, "Имя и текст обязательны");
+            return;
+        }
+        _busy = true;
+        var (ok, err) = await PromptService.CreateAsync(_newName, _newCategory, _newText);
+        SetStatus(ok, ok ? "Создано" : err);
+        if (ok)
+        {
+            _creating = false;
+            await ReloadPrompts();
+            _selected = _prompts.LastOrDefault(p => p.Name == _newName);
+        }
+        _busy = false;
+    }
+
+    private async Task Duplicate()
+    {
+        if (_selected == null) return;
+        _busy = true;
+        var (ok, err) = await PromptService.DuplicateAsync(_selected.Id);
+        SetStatus(ok, ok ? "Скопировано" : err);
+        if (ok) await ReloadPrompts();
+        _busy = false;
+    }
+
+    private async Task SetDefault()
+    {
+        if (_selected == null) return;
+        _busy = true;
+        var (ok, err) = await PromptService.SetDefaultAsync(_selected.Id);
+        SetStatus(ok, ok ? "Установлен по умолчанию" : err);
+        if (ok) await ReloadPrompts();
+        _busy = false;
+    }
+
+    private async Task Delete()
+    {
+        if (_selected == null) return;
+        _busy = true;
+        var (ok, err) = await PromptService.DeleteAsync(_selected.Id);
+        SetStatus(ok, ok ? "Удалено" : err);
+        if (ok)
+        {
+            _selected = null;
+            await ReloadPrompts();
+        }
+        _busy = false;
+    }
+
+    private void SetStatus(bool success, string? msg)
+    {
+        _message = msg;
+        _isError = !success;
     }
 
     private static string CategoryLabel(string category) => category switch
     {
         "card" => "Карточка",
-        "image" => "Картинка",
+        "image-prompt" => "Картинка",
         _ => category
     };
 }
