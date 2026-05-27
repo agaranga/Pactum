@@ -13,16 +13,13 @@
     <div class="border-end d-flex flex-column" style="width: 30%; min-width: 250px; max-width: 30%; flex-shrink: 0;">
         <div class="p-2 border-bottom bg-light d-flex justify-content-between align-items-center" style="flex-shrink: 0;">
             <h6 class="mb-0">Промпты</h6>
-            @if (_isAdmin)
-            {
-                <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">+</button>
-                    <ul class="dropdown-menu">
-                        <li><button class="dropdown-item" @onclick='() => StartCreate("card")'>Новый для карточек</button></li>
-                        <li><button class="dropdown-item" @onclick='() => StartCreate("image-prompt")'>Новый для картинок</button></li>
-                    </ul>
-                </div>
-            }
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">+</button>
+                <ul class="dropdown-menu">
+                    <li><button class="dropdown-item" @onclick='() => StartCreate("card")'>Новый для карточек</button></li>
+                    <li><button class="dropdown-item" @onclick='() => StartCreate("image-prompt")'>Новый для картинок</button></li>
+                </ul>
+            </div>
         </div>
         <div class="overflow-auto flex-grow-1">
             <div class="list-group list-group-flush">
@@ -92,26 +89,23 @@
                         }
                     </div>
                 </div>
-                @if (_isAdmin)
-                {
-                    <div class="d-flex gap-2 flex-wrap mb-2">
-                        @if (_editing)
+                <div class="d-flex gap-2 flex-wrap mb-2">
+                    @if (_editing)
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="SaveEdit" disabled="@_busy">Сохранить</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Отмена</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-outline-primary btn-sm" @onclick="StartEdit">Редактировать</button>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="Duplicate" disabled="@_busy">Дублировать</button>
+                        @if (!_selected.IsDefault)
                         {
-                            <button class="btn btn-primary btn-sm" @onclick="SaveEdit" disabled="@_busy">Сохранить</button>
-                            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEdit">Отмена</button>
+                            <button class="btn btn-outline-success btn-sm" @onclick="SetDefault" disabled="@_busy">Сделать по умолчанию</button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="Delete" disabled="@_busy">Удалить</button>
                         }
-                        else
-                        {
-                            <button class="btn btn-outline-primary btn-sm" @onclick="StartEdit">Редактировать</button>
-                            <button class="btn btn-outline-secondary btn-sm" @onclick="Duplicate" disabled="@_busy">Дублировать</button>
-                            @if (!_selected.IsDefault)
-                            {
-                                <button class="btn btn-outline-success btn-sm" @onclick="SetDefault" disabled="@_busy">Сделать по умолчанию</button>
-                                <button class="btn btn-outline-danger btn-sm" @onclick="Delete" disabled="@_busy">Удалить</button>
-                            }
-                        }
-                    </div>
-                }
+                    }
+                </div>
                 @if (_message != null)
                 {
                     <div class="alert @(_isError ? "alert-danger" : "alert-success") py-2 mb-2">@_message</div>
